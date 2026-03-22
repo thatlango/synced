@@ -6,6 +6,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/authStore';
+// Import to ensure background task is registered at app startup
+import '../services/smsBackgroundSync';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,7 +42,8 @@ export default function RootLayout() {
             <Stack.Screen name="auth/otp" options={{ title: 'Verify Phone' }} />
             <Stack.Screen name="tabs" options={{ headerShown: false }} />
             <Stack.Screen name="add-expense" options={{ title: 'Add Expense', presentation: 'modal' }} />
-            <Stack.Screen name="pay-bill" options={{ title: 'Pay Bill', presentation: 'modal' }} />
+            <Stack.Screen name="bills" options={{ title: 'Bills Tracker', headerShown: false }} />
+            <Stack.Screen name="sms-sync" options={{ title: 'SMS Sync', headerShown: false }} />
             <Stack.Screen name="fund-wallet" options={{ title: 'Fund Wallet', presentation: 'modal' }} />
             <Stack.Screen name="transaction-detail" options={{ title: 'Transaction' }} />
           </Stack>

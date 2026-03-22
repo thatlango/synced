@@ -44,9 +44,9 @@ export default function SettingsScreen() {
       </SettingsSection>
 
       <SettingsSection title="Finance">
+        <SettingsItem icon="📲" label="SMS Sync" subtitle="Import MoMo transactions" onPress={() => router.push('/sms-sync')} />
         <SettingsItem icon="💱" label="Currency" subtitle="UGX" onPress={() => {}} />
         <SettingsItem icon="📊" label="Budget Periods" onPress={() => {}} />
-        <SettingsItem icon="🔄" label="Sync Mobile Money" onPress={() => {}} />
       </SettingsSection>
 
       <SettingsSection title="Household">

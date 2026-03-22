@@ -21,7 +21,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.tukutuku.synced"
+      "package": "com.tukutuku.synced",
+      "permissions": [
+        "READ_SMS",
+        "RECEIVE_SMS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",

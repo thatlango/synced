@@ -100,7 +100,7 @@ class ApiService {
   // Bills
   bills = {
     create: (data: any) => this.client.post('/bills', data),
-    getAll: (includePaid?: boolean) => this.client.get('/bills', { params: { includePaid } }),
+    getAll: (includePaid = true) => this.client.get('/bills', { params: { includePaid } }),
     getUpcoming: (days?: number) => this.client.get('/bills/upcoming', { params: { days } }),
     markPaid: (id: string) => this.client.patch(`/bills/${id}/mark-paid`),
   };
@@ -149,6 +149,10 @@ class ApiService {
   // Ingestion
   ingestion = {
     sms: (walletId: string, smsBody: string) => this.client.post('/ingestion/sms', { walletId, smsBody }),
+    smsBulk: (walletId: string, smsBodies: string[]) =>
+      this.client.post('/ingestion/sms/bulk', { walletId, smsBodies }),
+    smsPreview: (walletId: string, smsBody: string) =>
+      this.client.post('/ingestion/sms/preview', { walletId, smsBody }),
     syncMtn: (walletId: string) => this.client.post('/ingestion/mtn/sync', { walletId }),
     syncAirtel: (walletId: string) => this.client.post('/ingestion/airtel/sync', { walletId }),
   };

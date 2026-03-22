@@ -155,8 +155,8 @@ export default function DashboardScreen() {
                   </View>
                 ))}
               </View>
-              <TouchableOpacity onPress={() => router.push('/pay-bill')} style={styles.payNowBtn}>
-                <Text style={styles.payNowText}>Pay Bills →</Text>
+              <TouchableOpacity onPress={() => router.push('/bills')} style={styles.payNowBtn}>
+                <Text style={styles.payNowText}>View Bills →</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -258,9 +258,9 @@ function BudgetCard({ budget }: { budget: any }) {
 
 const QUICK_ACTIONS = [
   { label: 'Add Expense', icon: '➕', route: '/add-expense', color: COLORS.primary },
-  { label: 'Pay Bill', icon: '📄', route: '/pay-bill', color: COLORS.warning },
+  { label: 'SMS Sync', icon: '📲', route: '/sms-sync', color: COLORS.secondary },
+  { label: 'View Bills', icon: '📋', route: '/bills', color: COLORS.warning },
   { label: 'Fund Wallet', icon: '💰', route: '/fund-wallet', color: COLORS.success },
-  { label: 'Subscriptions', icon: '🔄', route: '/tabs/transactions', color: COLORS.secondary },
 ];
 
 const formatCurrency = (n: number) =>
