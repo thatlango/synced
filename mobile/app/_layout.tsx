@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/authStore';
+import { COLORS } from '../constants';
 // Import to ensure background task is registered at app startup
 import '../services/smsBackgroundSync';
 
@@ -23,16 +24,17 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: COLORS.background }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="light" backgroundColor="#0f0f1a" />
+          <StatusBar style="dark" backgroundColor={COLORS.background} />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: '#1a1a2e' },
-              headerTintColor: '#ffffff',
-              headerTitleStyle: { fontWeight: '600' },
-              contentStyle: { backgroundColor: '#0f0f1a' },
+              headerStyle: { backgroundColor: COLORS.surface },
+              headerTintColor: COLORS.text,
+              headerShadowVisible: false,
+              headerTitleStyle: { fontWeight: '600', color: COLORS.text },
+              contentStyle: { backgroundColor: COLORS.background },
             }}
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
