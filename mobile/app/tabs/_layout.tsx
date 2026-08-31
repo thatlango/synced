@@ -1,19 +1,21 @@
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../../constants';
+import { COLORS, UI } from '../../constants';
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const icons: Record<string, string> = {
-    index: '🏠',
-    transactions: '💳',
-    analytics: '📊',
-    household: '👨‍👩‍👧',
-    settings: '⚙️',
+    index: '⌂',
+    transactions: '↔',
+    analytics: '▥',
+    household: '◎',
+    settings: '⚙',
   };
   return (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>
-      {icons[name] || '●'}
-    </Text>
+    <View style={[styles.tabIcon, focused && styles.tabIconActive]}>
+      <Text style={[styles.tabIconText, focused && styles.tabIconTextActive]}>
+        {icons[name] || '•'}
+      </Text>
+    </View>
   );
 }
 
@@ -24,17 +26,20 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: COLORS.surface,
           borderTopColor: COLORS.border,
-          borderTopWidth: 1,
-          height: 72,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          height: 78,
           paddingBottom: 10,
-          paddingTop: 8,
+          paddingTop: 7,
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+        tabBarItemStyle: { paddingVertical: 2 },
         headerStyle: { backgroundColor: COLORS.surface },
         headerTintColor: COLORS.text,
-        headerTitleStyle: { fontWeight: '700', fontSize: 18 },
+        headerShadowVisible: false,
+        headerTitleStyle: { fontWeight: '700', fontSize: 18, color: COLORS.text },
+        sceneStyle: { backgroundColor: COLORS.background },
       }}
     >
       <Tabs.Screen
@@ -44,7 +49,9 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="index" focused={focused} />,
           headerTitle: () => (
             <View style={styles.headerTitle}>
-              <Text style={styles.headerEmoji}>⚡</Text>
+              <View style={styles.headerMark}>
+                <Text style={styles.headerMarkText}>S</Text>
+              </View>
               <Text style={styles.headerText}>Synced</Text>
             </View>
           ),
@@ -53,21 +60,21 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="transactions"
         options={{
-          title: 'Transactions',
+          title: 'Activity',
           tabBarIcon: ({ focused }) => <TabIcon name="transactions" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="analytics"
         options={{
-          title: 'Analytics',
+          title: 'Insights',
           tabBarIcon: ({ focused }) => <TabIcon name="analytics" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="household"
         options={{
-          title: 'Household',
+          title: 'People',
           tabBarIcon: ({ focused }) => <TabIcon name="household" focused={focused} />,
         }}
       />
@@ -83,7 +90,28 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerEmoji: { fontSize: 20 },
-  headerText: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+  headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerMark: {
+    width: 30,
+    height: 30,
+    borderRadius: UI.radiusSm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primaryLight,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.border,
+  },
+  headerMarkText: { fontSize: 15, fontWeight: '800', color: COLORS.primary },
+  headerText: { fontSize: 20, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4 },
+  tabIcon: {
+    minWidth: 34,
+    height: 30,
+    paddingHorizontal: 8,
+    borderRadius: UI.radiusSm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconActive: { backgroundColor: COLORS.primaryLight },
+  tabIconText: { fontSize: 20, lineHeight: 22, color: COLORS.textMuted, opacity: 0.8 },
+  tabIconTextActive: { color: COLORS.primary, opacity: 1, fontWeight: '700' },
 });
