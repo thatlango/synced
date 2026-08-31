@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   body: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 360, marginTop: 9, marginBottom: 24 },
   helper: { color: COLORS.textMuted, fontSize: 12, marginTop: 12, textAlign: 'center' },
   button: { width: '100%', maxWidth: 360, minHeight: 54, borderRadius: 15, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: '#fff', fontSize: 15, fontWeight: '750' },
+  buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   secondary: { minHeight: 46, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  secondaryText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '650' },
+  secondaryText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
 });
