@@ -72,7 +72,6 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       >
-        {/* Greeting */}
         <View style={styles.greeting}>
           <View>
             <Text style={styles.greetingText}>{greeting()},</Text>
@@ -88,9 +87,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Balance Cards */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cardsScroll}>
-          {/* Personal Balance */}
           <View style={[styles.balanceCard, styles.personalCard]}>
             <Text style={styles.cardLabel}>Personal Balance</Text>
             <Text style={styles.cardBalance}>{formatCurrency(personalBalance)}</Text>
@@ -102,7 +99,6 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Household Balance */}
           {summary?.households?.map((h) => (
             <View key={h.householdId} style={[styles.balanceCard, styles.householdCard]}>
               <Text style={styles.cardLabel}>{h.householdName}</Text>
@@ -115,7 +111,6 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        {/* Quick Actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.quickActions}>
@@ -134,7 +129,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Upcoming Bills */}
         {(upcomingBills as any)?.summary?.count > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -162,7 +156,6 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Budget Progress */}
         {budgets && Array.isArray(budgets) && (budgets as any[]).length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Budget Progress</Text>
@@ -174,7 +167,6 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Subscriptions */}
         {(subscriptions as any)?.summary && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Subscriptions</Text>
@@ -193,7 +185,6 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Recent Transactions */}
         <View style={[styles.section, { marginBottom: 24 }]}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Transactions</Text>
@@ -233,7 +224,6 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      {/* FAB */}
       <TouchableOpacity style={styles.fab} onPress={() => router.push('/add-expense')}>
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
@@ -262,9 +252,6 @@ const QUICK_ACTIONS = [
   { label: 'View Bills', icon: '📋', route: '/bills', color: COLORS.warning },
   { label: 'Fund Wallet', icon: '💰', route: '/fund-wallet', color: COLORS.success },
 ];
-
-const formatCurrency = (n: number) =>
-  n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}K` : `${n}`;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
