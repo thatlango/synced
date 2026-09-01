@@ -122,13 +122,51 @@ enum OtpPurpose {
   reset
 }
 
+enum InviteTargetType {
+  household
+  basket
+}
+
+enum InviteRole {
+  member
+  contributor
+  viewer
+}
+
+enum InviteStatus {
+  active
+  exhausted
+  revoked
+  expired
+}
+
+enum BasketRole {
+  owner
+  contributor
+  viewer
+}
+
+enum BasketStatus {
+  active
+  completed
+  paused
+  archived
+}
+
+enum PlanStatus {
+  draft
+  active
+  closed
+}
+
 // ─────────────────────────────────────────────────────────────
 // USERS
 // ─────────────────────────────────────────────────────────────
 
 model User {
   id         String    @id @default(uuid())
-  phone      String    @unique
+  phone      String?   @unique
+  coreUserId String?   @unique
   email      String?   @unique
   name       String?
   avatar     String?
@@ -149,6 +187,12 @@ model User {
   otps               Otp[]
   payments           Payment[]
   transactions       Transaction[]
+  basketMemberships  BasketMember[]
+  basketContributions BasketContribution[]
+  createdBaskets     Basket[]              @relation("BasketCreator")
+  createdInvites     Invite[]              @relation("InviteCreator")
+  redeemedInvites    InviteRedemption[]
+  plans              Plan[]
 
   @@map("users")
 }
@@ -191,6 +235,9 @@ model Household {
   budgets     Budget[]
   subscriptions Subscription[]
   bills       Bill[]
+  baskets     Basket[]
+  invites     Invite[]
+  plans       Plan[]
 
   @@map("households")
 }
@@ -396,6 +443,154 @@ model Budget {
 
   @@unique([ownerType, userId, householdId, category, period])
   @@map("budgets")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PLANS
+// ─────────────────────────────────────────────────────────────
+
+model Plan {
+  id             String     @id @default(uuid())
+  userId         String?
+  householdId    String?
+  label          String
+  currency       String     @default("UGX")
+  expectedIncome Decimal    @default(0) @db.Decimal(18, 2)
+  startDate      DateTime
+  endDate        DateTime
+  status         PlanStatus @default(active)
+  notes          String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  user        User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household   Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  allocations PlanAllocation[]
+
+  @@index([userId, startDate, endDate])
+  @@index([householdId, startDate, endDate])
+  @@map("plans")
+}
+
+model PlanAllocation {
+  id            String   @id @default(uuid())
+  planId        String
+  label         String
+  category      Category?
+  plannedAmount Decimal  @db.Decimal(18, 2)
+  basketId      String?
+  billId        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  plan   Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  basket Basket? @relation(fields: [basketId], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+  @@map("plan_allocations")
+}
+
+// ─────────────────────────────────────────────────────────────
+// BASKETS — personal/shared purpose pools
+// ─────────────────────────────────────────────────────────────
+
+model Basket {
+  id             String       @id @default(uuid())
+  name           String
+  description    String?
+  currency       String       @default("UGX")
+  targetAmount   Decimal?     @db.Decimal(18, 2)
+  targetDate     DateTime?
+  createdBy      String
+  householdId    String?
+  status         BasketStatus @default(active)
+  colorKey       String?      @default("violet")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  creator       User                 @relation("BasketCreator", fields: [createdBy], references: [id])
+  household     Household?           @relation(fields: [householdId], references: [id], onDelete: SetNull)
+  members       BasketMember[]
+  contributions BasketContribution[]
+  invites       Invite[]
+  allocations   PlanAllocation[]
+
+  @@index([createdBy, status])
+  @@index([householdId, status])
+  @@map("baskets")
+}
+
+model BasketMember {
+  id        String     @id @default(uuid())
+  basketId  String
+  userId    String
+  role      BasketRole @default(contributor)
+  joinedAt  DateTime   @default(now())
+
+  basket Basket @relation(fields: [basketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([basketId, userId])
+  @@map("basket_members")
+}
+
+model BasketContribution {
+  id            String   @id @default(uuid())
+  basketId      String
+  userId        String
+  amount        Decimal  @db.Decimal(18, 2)
+  source        String   @default("manual")
+  transactionId String?
+  note          String?
+  contributedAt DateTime @default(now())
+
+  basket Basket @relation(fields: [basketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([basketId, contributedAt])
+  @@map("basket_contributions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// INVITES — scope-aware code/link/QR joining
+// ─────────────────────────────────────────────────────────────
+
+model Invite {
+  id           String           @id @default(uuid())
+  code         String           @unique
+  targetType   InviteTargetType
+  role         InviteRole       @default(member)
+  householdId  String?
+  basketId     String?
+  createdBy    String
+  status       InviteStatus     @default(active)
+  maxUses      Int              @default(1)
+  useCount     Int              @default(0)
+  expiresAt    DateTime?
+  metadata     Json?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  creator     User               @relation("InviteCreator", fields: [createdBy], references: [id])
+  household   Household?         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  basket      Basket?            @relation(fields: [basketId], references: [id], onDelete: Cascade)
+  redemptions InviteRedemption[]
+
+  @@index([code, status])
+  @@map("invites")
+}
+
+model InviteRedemption {
+  id         String   @id @default(uuid())
+  inviteId   String
+  userId     String
+  redeemedAt DateTime @default(now())
+
+  invite Invite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([inviteId, userId])
+  @@map("invite_redemptions")
 }
 
 // ─────────────────────────────────────────────────────────────

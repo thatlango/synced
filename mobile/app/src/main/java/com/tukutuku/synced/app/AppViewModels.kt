@@ -28,26 +28,25 @@ class AuthViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
-    fun clearError() {
-        _error.value = null
-    }
+    fun clearError() { _error.value = null }
 
-    fun login(email: String, password: String) = viewModelScope.launch {
+    fun beginCoreSignIn(onReady: (String) -> Unit) = viewModelScope.launch {
         _busy.value = true
         _error.value = null
-        auth.login(email, password).onFailure {
-            _error.value = it.message ?: "Sign in failed"
-        }
+        auth.authorizationUrl()
+            .onSuccess(onReady)
+            .onFailure { _error.value = it.message ?: "Could not start Tuku sign in" }
         _busy.value = false
     }
 
-    fun register(name: String, email: String, password: String, phone: String?) = viewModelScope.launch {
+    fun handleCoreCallback(uri: String, onHandled: () -> Unit = {}) = viewModelScope.launch {
         _busy.value = true
         _error.value = null
-        auth.register(name, email, password, phone).onFailure {
-            _error.value = it.message ?: "Account creation failed"
+        auth.handleCoreCallback(uri).onFailure {
+            _error.value = it.message ?: "Tuku sign in failed"
         }
         _busy.value = false
+        onHandled()
     }
 
     fun signOut() = viewModelScope.launch { auth.signOut() }

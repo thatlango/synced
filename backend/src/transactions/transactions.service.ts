@@ -16,8 +16,16 @@ export class TransactionsService {
   ) {}
 
   async create(userId: string, dto: CreateTransactionDto) {
-    const wallet = await this.prisma.wallet.findUnique({ where: { id: dto.walletId } });
-    if (!wallet) throw new NotFoundException('Wallet not found');
+    const wallet = await this.prisma.wallet.findFirst({
+      where: {
+        id: dto.walletId,
+        OR: [
+          { userId },
+          { household: { members: { some: { userId } } } },
+        ],
+      },
+    });
+    if (!wallet) throw new NotFoundException('Wallet not found or not available to this account');
 
     if (dto.type === 'debit' && Number(wallet.balance) < dto.amount) {
       throw new BadRequestException('Insufficient wallet balance');
@@ -47,6 +55,7 @@ export class TransactionsService {
           merchant: dto.merchant,
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
+          referenceId: dto.referenceId || undefined,
         },
       });
 
@@ -75,7 +84,7 @@ export class TransactionsService {
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
           description: dto.description,
-          referenceId: transaction.id,
+          referenceId: dto.referenceId || transaction.id,
         },
       });
 

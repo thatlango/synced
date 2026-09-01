@@ -19,6 +19,12 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { SearchModule } from './search/search.module';
+import { InvitesModule } from './invites/invites.module';
+import { InsightsModule } from './insights/insights.module';
+import { HealthModule } from './health/health.module';
+import { AiModule } from './ai/ai.module';
+import { BasketsModule } from './baskets/baskets.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -64,6 +70,12 @@ import { SearchModule } from './search/search.module';
     AlertsModule,
     ReconciliationModule,
     SearchModule,
+    InvitesModule,
+    InsightsModule,
+    HealthModule,
+    AiModule,
+    BasketsModule,
+    PlansModule,
   ],
 })
 export class AppModule {}

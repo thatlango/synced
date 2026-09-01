@@ -54,6 +54,11 @@ export class CreateTransactionDto {
   @IsString()
   source?: string;
 
+  @ApiPropertyOptional({ description: 'External/provider idempotency reference' })
+  @IsOptional()
+  @IsString()
+  referenceId?: string;
+
   @ApiPropertyOptional({ enum: ['personal', 'household', 'both'], default: 'personal' })
   @IsOptional()
   @IsEnum(VisibilityEnum)

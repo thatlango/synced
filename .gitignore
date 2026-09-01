@@ -36,3 +36,5 @@ web-build/
 # Prisma
 prisma/dev.db
 prisma/dev.db-journal
+
+.env.production
