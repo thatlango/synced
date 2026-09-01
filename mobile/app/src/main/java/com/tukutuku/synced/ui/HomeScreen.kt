@@ -266,7 +266,7 @@ fun TransactionRow(tx: Transaction) {
                     maxLines = 1,
                 )
                 Text(
-                    listOf(categoryLabel(tx.category), tx.source).filter { it.isNotBlank() }.joinToString(" • "),
+                    listOfNotNull(categoryLabel(tx.category), tx.source).joinToString(" • "),
                     color = Muted,
                     style = MaterialTheme.typography.bodySmall,
                 )
