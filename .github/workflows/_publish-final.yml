@@ -19,8 +19,8 @@ jobs:
           fetch-depth: 0
       - name: Fetch and verify validated release patch
         env:
-          PATCH_URL: https://api.synced.tukutuku.org/__native_release/7c913d9b7a4e6c2f94f9c4c8c766b8df3bdf29c6ad69de66de2f662eb26a214e/final.patch
-          PATCH_SHA256: 60d1d84ec6c90bbe2ddc51f61d7a640a6b6f5aa75490a869a6a5adebf999e12b
+          PATCH_URL: https://api.synced.tukutuku.org/__native_release/7c913d9b7a4e6c2f94f9c4c8c766b8df3bdf29c6ad69de66de2f662eb26a214e/final-noworkflows.patch
+          PATCH_SHA256: 9d3b028db85491da4d05fa3b044f711d1c4937b9b91e6d273b43607353aa24b9
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --location "$PATCH_URL" --output /tmp/synced-final.patch
