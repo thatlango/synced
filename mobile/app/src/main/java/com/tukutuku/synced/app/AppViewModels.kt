@@ -30,23 +30,20 @@ class AuthViewModel @Inject constructor(
 
     fun clearError() { _error.value = null }
 
-    fun beginCoreSignIn(onReady: (String) -> Unit) = viewModelScope.launch {
-        _busy.value = true
-        _error.value = null
-        auth.authorizationUrl()
-            .onSuccess(onReady)
-            .onFailure { _error.value = it.message ?: "Could not start Tuku sign in" }
-        _busy.value = false
+    fun signIn(email: String, password: String) = viewModelScope.launch {
+        submit { auth.signIn(email, password) }
     }
 
-    fun handleCoreCallback(uri: String, onHandled: () -> Unit = {}) = viewModelScope.launch {
+    fun register(name: String, email: String, password: String) = viewModelScope.launch {
+        submit { auth.register(name, email, password) }
+    }
+
+    private suspend fun submit(action: suspend () -> Result<Unit>) {
+        if (_busy.value) return
         _busy.value = true
         _error.value = null
-        auth.handleCoreCallback(uri).onFailure {
-            _error.value = it.message ?: "Tuku sign in failed"
-        }
+        action().onFailure { _error.value = it.message ?: "Tuku account request failed" }
         _busy.value = false
-        onHandled()
     }
 
     fun signOut() = viewModelScope.launch { auth.signOut() }

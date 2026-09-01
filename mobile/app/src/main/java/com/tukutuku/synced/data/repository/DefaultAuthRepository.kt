@@ -1,9 +1,10 @@
 package com.tukutuku.synced.data.repository
 
-import android.net.Uri
-import android.util.Base64
-import com.tukutuku.synced.data.model.CoreSsoExchangeRequest
+import com.tukutuku.synced.data.model.CoreLoginRequest
+import com.tukutuku.synced.data.model.CoreRegisterRequest
+import com.tukutuku.synced.data.model.CoreSessionLinkRequest
 import com.tukutuku.synced.data.remote.SyncedApiService
+import com.tukutuku.synced.data.remote.TukuCoreApiService
 import com.tukutuku.synced.data.session.SessionStore
 import com.tukutuku.synced.domain.AuthState
 import kotlinx.coroutines.CoroutineScope
@@ -13,22 +14,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
-import java.security.SecureRandom
+import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class DefaultAuthRepository @Inject constructor(
     private val api: SyncedApiService,
+    private val coreApi: TukuCoreApiService,
     private val sessions: SessionStore,
 ) : AuthRepository {
-    companion object {
-        private const val CORE_AUTHORIZE_URL = "https://core.tukutuku.org/authorize"
-        private const val CLIENT_ID = "synced-android"
-        private const val REDIRECT_URI = "synced://auth/tuku/callback"
-    }
-
     private val _state = MutableStateFlow<AuthState>(AuthState.Initializing)
     override val state: StateFlow<AuthState> = _state.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -46,39 +41,43 @@ class DefaultAuthRepository @Inject constructor(
         }
     }
 
-    override suspend fun authorizationUrl() = runCatching {
-        val verifier = randomUrlSafe(64)
-        val state = randomUrlSafe(32)
-        val challenge = Base64.encodeToString(
-            MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
-            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
-        )
-        sessions.savePendingSso(state, verifier)
-        Uri.parse(CORE_AUTHORIZE_URL).buildUpon()
-            .appendQueryParameter("client_id", CLIENT_ID)
-            .appendQueryParameter("redirect_uri", REDIRECT_URI)
-            .appendQueryParameter("state", state)
-            .appendQueryParameter("code_challenge", challenge)
-            .appendQueryParameter("code_challenge_method", "S256")
-            .build().toString()
+    override suspend fun signIn(email: String, password: String): Result<Unit> = try {
+        require(email.isNotBlank()) { "Enter your email address." }
+        require(password.isNotBlank()) { "Enter your password." }
+        val core = coreApi.login(CoreLoginRequest(email.trim().lowercase(), password)).data
+            ?: error("Tuku Core did not return a session.")
+        val token = core.session?.accessToken ?: error("Tuku Core session is unavailable.")
+        linkVerifiedCoreSession(token)
+        Result.success(Unit)
+    } catch (error: Throwable) {
+        _state.value = AuthState.SignedOut
+        Result.failure(friendlyAuthError(error, false))
     }
 
-    override suspend fun handleCoreCallback(callbackUri: String) = runCatching {
-        val uri = Uri.parse(callbackUri)
-        require(uri.scheme == "synced" && uri.host == "auth" && uri.path == "/tuku/callback") { "Invalid Tuku callback." }
-        uri.getQueryParameter("error")?.let { error(it) }
-        val code = uri.getQueryParameter("code")?.takeIf { it.isNotBlank() } ?: error("Tuku authorization code is missing.")
-        val returnedState = uri.getQueryParameter("state")?.takeIf { it.isNotBlank() } ?: error("Tuku authorization state is missing.")
-        val pending = sessions.pendingSso() ?: error("This sign-in attempt has expired. Start again.")
-        require(returnedState == pending.first) { "Tuku sign-in state did not match." }
-        val response = api.exchangeCoreCode(CoreSsoExchangeRequest(code, pending.second, REDIRECT_URI)).data
+    override suspend fun register(name: String, email: String, password: String): Result<Unit> = try {
+        require(name.trim().isNotBlank()) { "Enter your name." }
+        require(email.isNotBlank()) { "Enter your email address." }
+        require(password.length >= 8) { "Password must contain at least 8 characters." }
+        val core = coreApi.register(
+            CoreRegisterRequest(
+                email = email.trim().lowercase(),
+                password = password,
+                name = name.trim(),
+            ),
+        ).data ?: error("Tuku Core did not return a session.")
+        val token = core.session?.accessToken ?: error("Tuku Core session is unavailable.")
+        linkVerifiedCoreSession(token)
+        Result.success(Unit)
+    } catch (error: Throwable) {
+        _state.value = AuthState.SignedOut
+        Result.failure(friendlyAuthError(error, true))
+    }
+
+    private suspend fun linkVerifiedCoreSession(coreAccessToken: String) {
+        val response = api.linkCoreSession(CoreSessionLinkRequest(coreAccessToken)).data
             ?: error("Synced session was not returned.")
         sessions.save(response.accessToken, response.user.id, response.user.email, response.user.name)
-        sessions.clearPendingSso()
         _state.value = AuthState.SignedIn(response.user)
-    }.onFailure {
-        sessions.clearPendingSso()
-        _state.value = AuthState.SignedOut
     }
 
     override suspend fun refresh() = runCatching {
@@ -91,9 +90,16 @@ class DefaultAuthRepository @Inject constructor(
         _state.value = AuthState.SignedOut
     }
 
-    private fun randomUrlSafe(byteCount: Int): String {
-        val bytes = ByteArray(byteCount)
-        SecureRandom().nextBytes(bytes)
-        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+    private fun friendlyAuthError(error: Throwable, registering: Boolean): Throwable {
+        if (error is IllegalArgumentException || error !is HttpException) return error
+        val message = when (error.code()) {
+            400 -> if (registering) "Check your account details and try again." else "Check your email and password."
+            401 -> "Email or password is incorrect."
+            409 -> "A Tuku account already exists for this email. Sign in instead."
+            423 -> "This account is temporarily locked. Try again later."
+            429 -> "Too many attempts. Try again shortly."
+            else -> "Tuku account service is unavailable. Try again."
+        }
+        return IllegalStateException(message, error)
     }
 }
