@@ -1,0 +1,42 @@
+name: Bootstrap native Android source
+
+on:
+  push:
+    branches:
+      - native-android-bootstrap
+
+permissions:
+  contents: write
+
+jobs:
+  apply-native-conversion:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download validated native conversion
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            'https://api.synced.tukutuku.org/__native_release/7c913d9b7a4e6c2f94f9c4c8c766b8df3bdf29c6ad69de66de2f662eb26a214e/native.patch' \
+            --output /tmp/synced-native.patch
+          echo 'ddfc6c2d30d94531bc2d3e32e93c92ca0cc8aa9413c5f18463e9a39ed95282aa  /tmp/synced-native.patch' | sha256sum --check --strict
+
+      - name: Apply exact native Android patch
+        run: |
+          set -euo pipefail
+          git apply --check --binary /tmp/synced-native.patch
+          git apply --index --binary /tmp/synced-native.patch
+          git status --short
+
+      - name: Commit native Android conversion
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: replace Expo mobile app with native Android'
+          git push origin HEAD:native-android-bootstrap
