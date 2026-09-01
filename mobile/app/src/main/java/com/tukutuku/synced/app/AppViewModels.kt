@@ -59,11 +59,21 @@ class HomeViewModel @Inject constructor(
     val transactions = _transactions.asStateFlow()
     private val _insight = MutableStateFlow<InsightSummary?>(null)
     val insight = _insight.asStateFlow()
+    private val _analytics = MutableStateFlow(LoadState<PersonalAnalytics>())
+    val analytics = _analytics.asStateFlow()
+    private val _upcoming = MutableStateFlow(LoadState<UpcomingBills>())
+    val upcoming = _upcoming.asStateFlow()
+    private val _forecast = MutableStateFlow(LoadState<PersonalForecast>())
+    val forecast = _forecast.asStateFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
         _wallet.value = LoadState(loading = true)
+        _analytics.value = LoadState(loading = true)
+        _upcoming.value = LoadState(loading = true)
+        _forecast.value = LoadState(loading = true)
+
         runCatching { repo.walletSummary() }
             .onSuccess { _wallet.value = LoadState(data = it) }
             .onFailure { _wallet.value = LoadState(error = it.message) }
@@ -71,6 +81,18 @@ class HomeViewModel @Inject constructor(
         runCatching { repo.transactions() }
             .onSuccess { _transactions.value = LoadState(data = it) }
             .onFailure { _transactions.value = LoadState(error = it.message) }
+
+        runCatching { repo.personalAnalytics() }
+            .onSuccess { _analytics.value = LoadState(data = it) }
+            .onFailure { _analytics.value = LoadState(error = it.message) }
+
+        runCatching { repo.upcomingBills() }
+            .onSuccess { _upcoming.value = LoadState(data = it) }
+            .onFailure { _upcoming.value = LoadState(error = it.message) }
+
+        runCatching { repo.personalForecast() }
+            .onSuccess { _forecast.value = LoadState(data = it) }
+            .onFailure { _forecast.value = LoadState(error = it.message) }
 
         _insight.value = repo.insight()
     }
@@ -131,14 +153,20 @@ class PlanViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(LoadState<Plan?>())
     val state = _state.asStateFlow()
+    private val _forecast = MutableStateFlow(LoadState<PersonalForecast>())
+    val forecast = _forecast.asStateFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
         _state.value = LoadState(loading = true)
+        _forecast.value = LoadState(loading = true)
         runCatching { repo.currentPlan() }
             .onSuccess { _state.value = LoadState(data = it) }
             .onFailure { _state.value = LoadState(error = it.message) }
+        runCatching { repo.personalForecast() }
+            .onSuccess { _forecast.value = LoadState(data = it) }
+            .onFailure { _forecast.value = LoadState(error = it.message) }
     }
 
     fun create(
@@ -210,14 +238,26 @@ class HouseholdViewModel @Inject constructor(
     val state = _state.asStateFlow()
     private val _invite = MutableStateFlow<Invite?>(null)
     val invite = _invite.asStateFlow()
+    private val _analytics = MutableStateFlow(LoadState<HouseholdAnalytics>())
+    val analytics = _analytics.asStateFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
         _state.value = LoadState(loading = true)
         runCatching { repo.households() }
-            .onSuccess { _state.value = LoadState(data = it) }
+            .onSuccess { households ->
+                _state.value = LoadState(data = households)
+                households.firstOrNull()?.id?.let { loadAnalytics(it) }
+            }
             .onFailure { _state.value = LoadState(error = it.message) }
+    }
+
+    private suspend fun loadAnalytics(householdId: String) {
+        _analytics.value = LoadState(loading = true)
+        runCatching { repo.householdAnalytics(householdId) }
+            .onSuccess { _analytics.value = LoadState(data = it) }
+            .onFailure { _analytics.value = LoadState(error = it.message) }
     }
 
     fun create(name: String) = viewModelScope.launch {
@@ -237,6 +277,66 @@ class HouseholdViewModel @Inject constructor(
 
     fun clearInvite() {
         _invite.value = null
+    }
+}
+
+@HiltViewModel
+class BillsViewModel @Inject constructor(
+    private val repo: FinanceRepository,
+) : ViewModel() {
+    private val _state = MutableStateFlow(LoadState<UpcomingBills>())
+    val state = _state.asStateFlow()
+
+    init { refresh() }
+
+    fun refresh() = viewModelScope.launch {
+        _state.value = LoadState(loading = true)
+        runCatching { repo.upcomingBills(60) }
+            .onSuccess { _state.value = LoadState(data = it) }
+            .onFailure { _state.value = LoadState(error = it.message) }
+    }
+
+    fun create(body: CreateBillRequest, done: (Result<Bill>) -> Unit) = viewModelScope.launch {
+        val result = runCatching { repo.createBill(body) }
+        done(result)
+        if (result.isSuccess) refresh()
+    }
+
+    fun markPaid(id: String) = viewModelScope.launch {
+        runCatching { repo.markBillPaid(id) }
+        refresh()
+    }
+}
+
+@HiltViewModel
+class IntelligenceViewModel @Inject constructor(
+    private val repo: FinanceRepository,
+) : ViewModel() {
+    private val _analytics = MutableStateFlow(LoadState<PersonalAnalytics>())
+    val analytics = _analytics.asStateFlow()
+    private val _trends = MutableStateFlow(LoadState<List<MonthlyTrend>>())
+    val trends = _trends.asStateFlow()
+    private val _forecast = MutableStateFlow(LoadState<PersonalForecast>())
+    val forecast = _forecast.asStateFlow()
+    private val _insight = MutableStateFlow<InsightSummary?>(null)
+    val insight = _insight.asStateFlow()
+
+    init { refresh() }
+
+    fun refresh() = viewModelScope.launch {
+        _analytics.value = LoadState(loading = true)
+        _trends.value = LoadState(loading = true)
+        _forecast.value = LoadState(loading = true)
+        runCatching { repo.personalAnalytics() }
+            .onSuccess { _analytics.value = LoadState(data = it) }
+            .onFailure { _analytics.value = LoadState(error = it.message) }
+        runCatching { repo.personalTrends() }
+            .onSuccess { _trends.value = LoadState(data = it) }
+            .onFailure { _trends.value = LoadState(error = it.message) }
+        runCatching { repo.personalForecast() }
+            .onSuccess { _forecast.value = LoadState(data = it) }
+            .onFailure { _forecast.value = LoadState(error = it.message) }
+        _insight.value = repo.insight()
     }
 }
 
