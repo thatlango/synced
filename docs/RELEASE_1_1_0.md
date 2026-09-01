@@ -73,4 +73,6 @@ Tuku Auth: `https://core.tukutuku.org`
 Core SSO client: `synced-android`
 Redirect URI: `synced://auth/tuku/callback`
 
+The exact tested production source was promoted to the canonical GitHub branch from release commit `beac3a4f723efe09b9fa72216edb0af03ecacb5b`. This documentation update is intentionally a follow-up commit so GitHub Actions validates the promoted tree through the normal branch event path.
+
 Do not reintroduce direct Tuku email/password handling into Synced. New clients must continue using the Core product SSO contract.
