@@ -22,8 +22,18 @@ data class User(
 )
 
 @Serializable data class CoreLoginRequest(val email: String, val password: String)
-@Serializable data class CoreRegisterRequest(val email: String, val password: String, val name: String, val phone: String? = null)
-@Serializable data class CoreSsoExchangeRequest(val code: String, val codeVerifier: String, val redirectUri: String)
+@Serializable data class CoreRegisterRequest(
+    val email: String,
+    val password: String,
+    val name: String,
+    val language: String = "en",
+    val country: String = "UG",
+    val consent: Boolean = true,
+    val intent: String = "exploring",
+)
+@Serializable data class CoreNativeSession(val accessToken: String, val refreshToken: String? = null)
+@Serializable data class CoreNativeAuthResponse(val session: CoreNativeSession? = null)
+@Serializable data class CoreSessionLinkRequest(val accessToken: String)
 @Serializable data class AuthSession(val user: User, val accessToken: String, val canonicalIdentity: CanonicalIdentity? = null)
 @Serializable data class CanonicalIdentity(val coreUserId: String? = null)
 

@@ -8,7 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { SendOtpDto, VerifyOtpDto, SignUpDto, LoginDto, CoreRegisterDto, CoreLoginDto, CoreSsoExchangeDto } from './dto/auth.dto';
+import { SendOtpDto, VerifyOtpDto, SignUpDto, LoginDto, CoreRegisterDto, CoreLoginDto, CoreSessionDto, CoreSsoExchangeDto } from './dto/auth.dto';
 import { addMinutes, isAfter } from 'date-fns';
 
 @Injectable()
@@ -38,6 +38,18 @@ export class AuthService {
       throw new UnauthorizedException(payload?.error?.message || payload?.message || 'Tuku account request failed.');
     }
     return payload?.data ?? payload;
+  }
+
+  async coreSession(dto: CoreSessionDto) {
+    const resolution: any = await this.coreRequest('/api/v1/auth/me', {
+      method: 'GET',
+      headers: { authorization: `Bearer ${dto.accessToken}` },
+    });
+    const identity = resolution?.profile ?? resolution;
+    if (!identity?.coreUserId) {
+      throw new UnauthorizedException('Tuku Core did not return an authenticated identity.');
+    }
+    return this.linkCoreIdentity(identity);
   }
 
   async coreExchange(dto: CoreSsoExchangeDto) {

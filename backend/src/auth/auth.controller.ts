@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { SendOtpDto, SignUpDto, LoginDto, CoreRegisterDto, CoreLoginDto, CoreSsoExchangeDto } from './dto/auth.dto';
+import { SendOtpDto, SignUpDto, LoginDto, CoreRegisterDto, CoreLoginDto, CoreSessionDto, CoreSsoExchangeDto } from './dto/auth.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -13,8 +13,15 @@ export class AuthController {
 
 
   @Public()
+  @Post('core/session')
+  @ApiOperation({ summary: 'Verify a native Tuku Core session and create a Synced product session' })
+  coreSession(@Body() dto: CoreSessionDto) {
+    return this.authService.coreSession(dto);
+  }
+
+  @Public()
   @Post('core/exchange')
-  @ApiOperation({ summary: 'Exchange a Tuku Core PKCE authorization code for a Synced session' })
+  @ApiOperation({ summary: 'Legacy PKCE exchange retained for compatibility with older clients' })
   coreExchange(@Body() dto: CoreSsoExchangeDto) {
     return this.authService.coreExchange(dto);
   }

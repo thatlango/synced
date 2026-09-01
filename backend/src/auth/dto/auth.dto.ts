@@ -98,6 +98,13 @@ export class CoreLoginDto {
   password: string;
 }
 
+export class CoreSessionDto {
+  @ApiProperty({ description: 'Short-lived Tuku Core access token obtained directly by the native client' })
+  @IsString()
+  @IsNotEmpty()
+  accessToken: string;
+}
+
 export class CoreSsoExchangeDto {
   @ApiProperty({ description: 'One-time authorization code returned by Tuku Core' })
   @IsString()

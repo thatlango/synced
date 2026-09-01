@@ -4,9 +4,7 @@ import com.tukutuku.synced.data.model.*
 import retrofit2.http.*
 
 interface SyncedApiService {
-    @POST("auth/core/login") suspend fun login(@Body body: CoreLoginRequest): ApiEnvelope<AuthSession>
-    @POST("auth/core/register") suspend fun register(@Body body: CoreRegisterRequest): ApiEnvelope<AuthSession>
-    @POST("auth/core/exchange") suspend fun exchangeCoreCode(@Body body: CoreSsoExchangeRequest): ApiEnvelope<AuthSession>
+    @POST("auth/core/session") suspend fun linkCoreSession(@Body body: CoreSessionLinkRequest): ApiEnvelope<AuthSession>
     @GET("auth/me") suspend fun me(): ApiEnvelope<User>
 
     @GET("wallets/summary") suspend fun walletSummary(): ApiEnvelope<WalletSummary>

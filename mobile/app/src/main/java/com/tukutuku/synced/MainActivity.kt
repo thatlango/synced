@@ -68,23 +68,15 @@ private val tabs = listOf(
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val pendingInvite = mutableStateOf<String?>(null)
-    private val pendingAuthCallback = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingInvite.value = inviteCode(intent)
-        pendingAuthCallback.value = authCallback(intent)
         enableEdgeToEdge()
         setContent {
             SyncedTheme {
                 val auth: AuthViewModel = hiltViewModel()
                 val state by auth.state.collectAsStateWithLifecycle()
-                val callback = pendingAuthCallback.value
-                LaunchedEffect(callback) {
-                    if (!callback.isNullOrBlank()) {
-                        auth.handleCoreCallback(callback) { pendingAuthCallback.value = null }
-                    }
-                }
                 when (state) {
                     AuthState.Initializing -> Splash()
                     AuthState.SignedOut,
@@ -103,15 +95,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         inviteCode(intent)?.let { pendingInvite.value = it }
-        authCallback(intent)?.let { pendingAuthCallback.value = it }
     }
 
-    private fun authCallback(intent: Intent?): String? {
-        if (intent?.action != Intent.ACTION_VIEW) return null
-        val uri = intent.data ?: return null
-        if (uri.scheme != "synced" || uri.host != "auth" || uri.path != "/tuku/callback") return null
-        return uri.toString()
-    }
 
     private fun inviteCode(intent: Intent?): String? {
         if (intent?.action != Intent.ACTION_VIEW) return null

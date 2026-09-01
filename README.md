@@ -8,7 +8,7 @@ Synced is a full-stack fintech application that enables households to sync their
 
 ## ✅ Current production release
 
-**Synced 1.1.0** is the current hardened Android release. Production identity is Tuku Core SSO with PKCE; Synced does not receive the user's Tuku password. The production API is `https://api.synced.tukutuku.org/api/v1/`. See [`docs/RELEASE_1_1_0.md`](docs/RELEASE_1_1_0.md) for the verified release contract, tests, signed artifact hashes and deployment notes.
+**Synced 1.1.1** is the current hardened Android release. Login and account creation stay inside the native app and authenticate directly against Tuku Core; the v1.1.1 native client never sends the user's Tuku password to the Synced backend. The production API is `https://api.synced.tukutuku.org/api/v1/`. See [`docs/RELEASE_1_1_1.md`](docs/RELEASE_1_1_1.md) for the release contract and validation notes.
 
 ## 🏗️ Architecture
 
@@ -174,11 +174,12 @@ Base URL: `http://localhost:3000/api/v1`
 
 ### Authentication
 ```
-POST /auth/core/exchange — Exchange a Tuku Core PKCE authorization code for a Synced session
+POST /auth/core/session — Verify a native Tuku Core bearer token and create a Synced session
+POST /auth/core/exchange — Legacy PKCE exchange retained for older clients
 GET  /auth/me            — Get the current Synced financial profile
 ```
 
-Legacy phone-OTP endpoints remain backend compatibility surfaces; the native v1.1.0 Android sign-in path uses Tuku Core product SSO.
+Legacy phone-OTP and PKCE endpoints remain backend compatibility surfaces; the native v1.1.1 Android path authenticates directly with Tuku Core inside the app and links to Synced using the resulting Core bearer token.
 
 ### Wallets
 ```
@@ -229,7 +230,7 @@ Full interactive docs at: `http://localhost:3000/api/docs`
 ## 🧩 Key Features
 
 ### ✅ Implemented
-- [x] Tuku Core SSO with PKCE and canonical `coreUserId` mapping
+- [x] Native in-app Tuku Core sign-in/sign-up with canonical `coreUserId` mapping and no browser handoff
 - [x] Personal + household wallets
 - [x] Immutable double-entry ledger
 - [x] Auto-categorization (15 categories)

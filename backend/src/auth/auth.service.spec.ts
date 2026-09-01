@@ -67,4 +67,42 @@ describe('AuthService Core SSO exchange', () => {
     expect(result.canonicalIdentity).toEqual({ coreUserId: 'core-user-1' });
     expect((result as any).coreAccessToken).toBeUndefined();
   });
+
+  it('verifies a native Core bearer token without receiving the user password', async () => {
+    const prisma: any = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'synced-user-native',
+          coreUserId: 'core-user-native',
+          email: 'native@example.com',
+          phone: null,
+          name: 'Native User',
+          isVerified: true,
+        }),
+        update: jest.fn(),
+      },
+    };
+    const jwt: any = { signAsync: jest.fn().mockResolvedValue('synced-native-token') };
+    const config: any = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === 'TUKU_CORE_API_URL' ? 'https://core.tukutuku.org' : fallback),
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { profile: { coreUserId: 'core-user-native', email: 'native@example.com', displayName: 'Native User' }, identities: [] } }),
+    } as any);
+
+    const service = new AuthService(prisma, jwt, config);
+    const result = await service.coreSession({ accessToken: 'core-short-lived-token' });
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('https://core.tukutuku.org/api/v1/auth/me');
+    expect(init.method).toBe('GET');
+    expect(init.headers.authorization).toBe('Bearer core-short-lived-token');
+    expect(JSON.stringify(init)).not.toContain('password');
+    expect(result.accessToken).toBe('synced-native-token');
+    expect((result as any).coreAccessToken).toBeUndefined();
+  });
+
 });
