@@ -23,6 +23,7 @@ data class User(
 
 @Serializable data class CoreLoginRequest(val email: String, val password: String)
 @Serializable data class CoreRegisterRequest(val email: String, val password: String, val name: String, val phone: String? = null)
+@Serializable data class CoreSsoExchangeRequest(val code: String, val codeVerifier: String, val redirectUri: String)
 @Serializable data class AuthSession(val user: User, val accessToken: String, val canonicalIdentity: CanonicalIdentity? = null)
 @Serializable data class CanonicalIdentity(val coreUserId: String? = null)
 

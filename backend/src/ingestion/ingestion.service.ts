@@ -3,7 +3,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { CategorizationService } from '../categorization/categorization.service';
 import { TransactionsService } from '../transactions/transactions.service';
 
-interface ParsedSmsTransaction {
+export interface ParsedSmsTransaction {
   amount: number;
   type: 'credit' | 'debit';
   description: string;
@@ -284,7 +284,7 @@ export class IngestionService {
   async ingestSms(userId: string, walletId: string, smsBody: string) {
     const parsed = this.parseSms(smsBody);
     if (!parsed) {
-      this.logger.warn(`Could not parse SMS: ${smsBody.substring(0, 80)}`);
+      this.logger.warn('Could not parse a financial SMS candidate; raw message text was not logged.');
       return { parsed: false, message: 'Could not parse SMS transaction' };
     }
 
@@ -324,6 +324,71 @@ export class IngestionService {
     const ingested = results.filter((r) => r.success).length;
     this.logger.log(`Bulk SMS ingestion: ${ingested}/${smsBodies.length} parsed for user ${userId}`);
     return { total: smsBodies.length, ingested, skipped: smsBodies.length - ingested, results };
+  }
+
+
+  async ingestCandidate(
+    userId: string,
+    walletId: string,
+    candidate: ParsedSmsTransaction & { confidence?: number },
+  ) {
+    if (!candidate || !Number.isFinite(Number(candidate.amount)) || Number(candidate.amount) <= 0) {
+      return { accepted: false, reason: 'Invalid transaction amount' };
+    }
+    if (!['credit', 'debit'].includes(candidate.type)) {
+      return { accepted: false, reason: 'Invalid transaction type' };
+    }
+    if (!['mtn', 'airtel', 'sms'].includes(candidate.source)) {
+      return { accepted: false, reason: 'Invalid transaction source' };
+    }
+
+    const description = String(candidate.description || '').trim().slice(0, 240);
+    const merchant = candidate.merchant ? String(candidate.merchant).trim().slice(0, 160) : undefined;
+    const referenceId = candidate.referenceId
+      ? String(candidate.referenceId).trim().slice(0, 180)
+      : undefined;
+    const category = this.categorization.categorize(description, merchant);
+
+    try {
+      const transaction = await this.transactions.create(userId, {
+        walletId,
+        type: candidate.type,
+        amount: Number(candidate.amount),
+        category,
+        description,
+        merchant,
+        source: candidate.source,
+        referenceId,
+      });
+      return { accepted: true, transaction };
+    } catch (error: any) {
+      // A repeated local SMS fingerprint/reference is an idempotent duplicate,
+      // not a reason to repost or retain raw message content.
+      if (error?.code === 'P2002' || String(error?.message || '').includes('Unique constraint')) {
+        return { accepted: false, duplicate: true, reason: 'Already imported' };
+      }
+      throw error;
+    }
+  }
+
+  async ingestCandidateBulk(
+    userId: string,
+    walletId: string,
+    candidates: Array<ParsedSmsTransaction & { confidence?: number }>,
+  ) {
+    const capped = candidates.slice(0, 500);
+    const results = [];
+    for (const candidate of capped) {
+      try {
+        results.push(await this.ingestCandidate(userId, walletId, candidate));
+      } catch (error: any) {
+        results.push({ accepted: false, reason: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    const ingested = results.filter((r: any) => r.accepted).length;
+    const duplicates = results.filter((r: any) => r.duplicate).length;
+    this.logger.log(`Structured SMS ingestion: ${ingested}/${capped.length} imported, ${duplicates} duplicate(s), user=${userId}`);
+    return { total: capped.length, processed: ingested, ingested, duplicates, skipped: capped.length - ingested, results };
   }
 
   // ─── Mock MoMo API ────────────────────────────────────────────

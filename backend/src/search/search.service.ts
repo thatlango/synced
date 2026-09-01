@@ -41,10 +41,12 @@ export class SearchService {
       }),
       this.prisma.bill.findMany({
         where: {
-          OR: [{ userId }, { household: { members: { some: { userId } } } }],
-          OR: [
-            { name: { contains: q, mode: 'insensitive' } },
-            { provider: { contains: q, mode: 'insensitive' } },
+          AND: [
+            { OR: [{ userId }, { household: { members: { some: { userId } } } }] },
+            { OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { provider: { contains: q, mode: 'insensitive' } },
+            ] },
           ],
         } as any,
         take: limit,

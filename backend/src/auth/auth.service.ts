@@ -8,7 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { SendOtpDto, VerifyOtpDto, SignUpDto, LoginDto } from './dto/auth.dto';
+import { SendOtpDto, VerifyOtpDto, SignUpDto, LoginDto, CoreRegisterDto, CoreLoginDto, CoreSsoExchangeDto } from './dto/auth.dto';
 import { addMinutes, isAfter } from 'date-fns';
 
 @Injectable()
@@ -21,6 +21,91 @@ export class AuthService {
     private config: ConfigService,
   ) {}
 
+  private coreBaseUrl() {
+    return (this.config.get<string>('TUKU_CORE_INTERNAL_URL') ||
+      this.config.get<string>('TUKU_CORE_API_URL') ||
+      'https://core.tukutuku.org').replace(/\/$/, '');
+  }
+
+  private async coreRequest(path: string, init: RequestInit) {
+    const response = await fetch(`${this.coreBaseUrl()}${path}`, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...(init.headers || {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const payload: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new UnauthorizedException(payload?.error?.message || payload?.message || 'Tuku account request failed.');
+    }
+    return payload?.data ?? payload;
+  }
+
+  async coreExchange(dto: CoreSsoExchangeDto) {
+    const result: any = await this.coreRequest('/api/v1/sso/exchange', {
+      method: 'POST',
+      body: JSON.stringify({
+        clientId: this.config.get<string>('TUKU_CORE_SYNCED_CLIENT_ID', 'synced-android'),
+        code: dto.code,
+        redirectUri: dto.redirectUri,
+        codeVerifier: dto.codeVerifier,
+      }),
+    });
+    if (!result?.authenticated || !result?.identity?.coreUserId) {
+      throw new UnauthorizedException('Tuku Core did not return an authenticated identity.');
+    }
+    return this.linkCoreIdentity(result.identity);
+  }
+
+  async coreRegister(dto: CoreRegisterDto) {
+    const result: any = await this.coreRequest('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: dto.email.trim().toLowerCase(),
+        password: dto.password,
+        name: dto.name.trim(),
+        language: 'en',
+        country: 'UG',
+        consent: true,
+        intent: 'individual',
+      }),
+    });
+    if (!result?.session?.accessToken) {
+      return { canonicalAccountCreated: true, emailConfirmationRequired: Boolean(result?.emailConfirmationRequired), user: result?.user ?? null };
+    }
+    return this.linkCoreIdentity(result.user, result.session.accessToken, dto.phone);
+  }
+
+  async coreLogin(dto: CoreLoginDto) {
+    const result: any = await this.coreRequest('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: dto.email.trim().toLowerCase(), password: dto.password }),
+    });
+    if (!result?.session?.accessToken) throw new UnauthorizedException('Tuku session is unavailable.');
+    return this.linkCoreIdentity(result.user, result.session.accessToken);
+  }
+
+  private async linkCoreIdentity(coreUser: any, coreAccessToken?: string, phoneHint?: string) {
+    const coreUserId = String(coreUser?.coreUserId || coreUser?.id || '');
+    if (!coreUserId) throw new UnauthorizedException('Tuku Core returned an invalid identity.');
+    const email = coreUser?.email ? String(coreUser.email).toLowerCase() : null;
+    const phone = phoneHint || coreUser?.phone || null;
+    let user = await this.prisma.user.findUnique({ where: { coreUserId } });
+    if (!user && email) user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user && phone) user = await this.prisma.user.findUnique({ where: { phone } });
+    if (user) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { coreUserId, email: email || user.email, phone: phone || user.phone, name: coreUser?.displayName || coreUser?.name || user.name, isVerified: true, lastLogin: new Date() },
+      });
+    } else {
+      user = await this.prisma.user.create({
+        data: { coreUserId, email, phone, name: coreUser?.displayName || coreUser?.name || null, platform: 'android', isVerified: true, lastLogin: new Date(), personalWallet: { create: { type: 'personal', balance: 0 } } },
+      });
+    }
+    const tokens = await this.generateTokens(user.id, user.phone || undefined);
+    return { user: this.sanitizeUser(user), ...tokens, canonicalIdentity: { coreUserId }, ...(coreAccessToken ? { coreAccessToken } : {}) };
+  }
+
   // ─── OTP Generation ───────────────────────────────────────────
 
   private generateOtp(): string {
@@ -28,7 +113,7 @@ export class AuthService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  private async sendOtp(phone: string, code: string): Promise<void> {
+  private async deliverOtp(phone: string, code: string): Promise<void> {
     const isMock = this.config.get<string>('OTP_MOCK', 'true') === 'true';
     if (isMock) {
       this.logger.log(`[MOCK OTP] Phone: ${phone} | Code: ${code}`);
@@ -65,7 +150,7 @@ export class AuthService {
       },
     });
 
-    await this.sendOtp(dto.phone, code);
+    await this.deliverOtp(dto.phone, code);
 
     return {
       message: 'OTP sent successfully',
@@ -158,7 +243,7 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(userId: string, phone: string) {
+  private async generateTokens(userId: string, phone?: string) {
     const payload = { sub: userId, phone };
     const accessToken = await this.jwt.signAsync(payload);
     return { accessToken };

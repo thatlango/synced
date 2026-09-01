@@ -3,7 +3,8 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IngestionService } from './ingestion.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { IsString, IsNotEmpty, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsNumber, IsPositive, IsIn, IsOptional, ValidateNested, MaxLength, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 class IngestSmsDto {
@@ -27,6 +28,60 @@ class IngestBulkSmsDto {
   @ApiProperty({ type: [String], example: ['You have received UGX 50,000 from John Doe.'] })
   @IsArray()
   smsBodies: string[];
+}
+
+
+class StructuredSmsCandidateDto {
+  @ApiProperty({ example: 50000 })
+  @IsNumber()
+  @IsPositive()
+  amount: number;
+
+  @ApiProperty({ enum: ['credit', 'debit'] })
+  @IsIn(['credit', 'debit'])
+  type: 'credit' | 'debit';
+
+  @ApiProperty({ example: 'Payment to merchant' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(240)
+  description: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  merchant?: string;
+
+  @ApiProperty({ required: false, description: 'Provider reference or locally generated one-way fingerprint; never raw SMS text.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  referenceId?: string;
+
+  @ApiProperty({ enum: ['mtn', 'airtel', 'sms'] })
+  @IsIn(['mtn', 'airtel', 'sms'])
+  source: 'mtn' | 'airtel' | 'sms';
+
+  @ApiProperty({ required: false, minimum: 0, maximum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  confidence?: number;
+}
+
+class IngestCandidateBulkDto {
+  @ApiProperty({ example: 'wallet-id-here' })
+  @IsString()
+  @IsNotEmpty()
+  walletId: string;
+
+  @ApiProperty({ type: [StructuredSmsCandidateDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StructuredSmsCandidateDto)
+  candidates: StructuredSmsCandidateDto[];
 }
 
 class FetchMoMoDto {
@@ -53,6 +108,13 @@ export class IngestionController {
   @ApiOperation({ summary: 'Ingest multiple SMS messages at once (mobile batch sync)' })
   ingestBulkSms(@CurrentUser('id') userId: string, @Body() dto: IngestBulkSmsDto) {
     return this.ingestionService.ingestBulkSms(userId, dto.walletId, dto.smsBodies);
+  }
+
+
+  @Post('sms/candidates/bulk')
+  @ApiOperation({ summary: 'Ingest locally parsed financial SMS candidates without receiving raw message text' })
+  ingestCandidateBulk(@CurrentUser('id') userId: string, @Body() dto: IngestCandidateBulkDto) {
+    return this.ingestionService.ingestCandidateBulk(userId, dto.walletId, dto.candidates);
   }
 
   @Post('sms/preview')
