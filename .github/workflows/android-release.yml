@@ -35,7 +35,7 @@ jobs:
           SYNCED_ANDROID_KEY_ALIAS: ${{ secrets.SYNCED_ANDROID_KEY_ALIAS }}
           SYNCED_ANDROID_KEY_PASSWORD: ${{ secrets.SYNCED_ANDROID_KEY_PASSWORD }}
         run: ./gradlew --no-daemon lintVitalRelease assembleRelease bundleRelease
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: synced-signed-release
           path: |

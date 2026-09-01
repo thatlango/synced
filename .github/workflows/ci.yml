@@ -47,7 +47,7 @@ jobs:
         run: yes | sdkmanager 'platform-tools' 'platforms;android-37.1' 'build-tools;36.0.0'
       - name: Validate Android
         run: ./gradlew --no-daemon lintDebug testDebugUnitTest assembleDebug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: synced-debug-apk
           path: mobile/app/build/outputs/apk/debug/app-debug.apk
