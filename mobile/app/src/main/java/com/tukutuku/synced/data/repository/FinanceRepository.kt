@@ -81,6 +81,28 @@ class FinanceRepository @Inject constructor(
     suspend fun ask(question: String): AskInsightResponse =
         api.askInsight(AskInsightRequest(question)).data ?: error("Synced insight unavailable")
 
+    suspend fun personalAnalytics(): PersonalAnalytics? = api.personalAnalytics().data
+
+    suspend fun personalTrends(months: Int = 6): List<MonthlyTrend> =
+        api.personalTrends(months).data.orEmpty()
+
+    suspend fun householdAnalytics(householdId: String): HouseholdAnalytics? =
+        api.householdAnalytics(householdId).data
+
+    suspend fun personalForecast(): PersonalForecast? = api.personalForecast().data
+
+    suspend fun upcomingBills(days: Int = 30): UpcomingBills =
+        api.upcomingBills(days).data ?: UpcomingBills()
+
+    suspend fun bills(includePaid: Boolean = false): List<Bill> =
+        api.bills(includePaid).data.orEmpty()
+
+    suspend fun createBill(body: CreateBillRequest): Bill =
+        api.createBill(body).data ?: error("Bill was not created")
+
+    suspend fun markBillPaid(id: String): Bill =
+        api.markBillPaid(id).data ?: error("Bill was not updated")
+
     suspend fun personalWalletId(): String? =
         sessions.wallet() ?: runCatching { walletSummary().personal?.id }.getOrNull()
 
