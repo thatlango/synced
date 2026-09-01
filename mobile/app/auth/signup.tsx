@@ -44,7 +44,7 @@ export default function SignUpScreen() {
       return;
     }
     try {
-      await signUp({ phone, code: otp, name, email: email || undefined, platform: Platform.OS });
+      await signUp({ phone, code: otp, name, email: email || undefined });
       router.replace('/tabs');
     } catch (err: any) {
       Toast.show({ type: 'error', text1: err.message });
