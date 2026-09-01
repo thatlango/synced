@@ -39,7 +39,6 @@ export default function TabsLayout() {
         headerTintColor: COLORS.text,
         headerShadowVisible: false,
         headerTitleStyle: { fontWeight: '700', fontSize: 18, color: COLORS.text },
-        sceneStyle: { backgroundColor: COLORS.background },
       }}
     >
       <Tabs.Screen
