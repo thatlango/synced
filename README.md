@@ -10,40 +10,19 @@ Synced is a full-stack fintech application that enables households to sync their
 
 ```
 synced/
-├── backend/          # NestJS API (REST)
-│   ├── src/
-│   │   ├── auth/           # Phone OTP auth + JWT
-│   │   ├── users/          # User management
-│   │   ├── households/     # Household + invite system
-│   │   ├── wallets/        # Personal + household wallets
-│   │   ├── transactions/   # Transaction engine
-│   │   ├── ledger/         # Immutable ledger entries
-│   │   ├── ingestion/      # SMS/MoMo transaction ingestion
-│   │   ├── categorization/ # Auto-categorization engine
-│   │   ├── subscriptions/  # Subscription management
-│   │   ├── bills/          # Bill tracking
-│   │   ├── payments/       # Bill payments (NWSC, UEDCL, DSTV, etc.)
-│   │   ├── budgets/        # Budget planner
-│   │   ├── forecasts/      # 3-month financial forecasting
-│   │   ├── analytics/      # Spending insights + household breakdown
-│   │   ├── alerts/         # Smart alerts (low balance, bills due, etc.)
-│   │   ├── queues/         # BullMQ async processing
-│   │   ├── reconciliation/ # Daily ledger reconciliation
-│   │   └── search/         # Global search
-│   └── prisma/
-│       ├── schema.prisma   # Full database schema
-│       └── seed.ts         # Demo data seeder
-└── mobile/           # React Native (Expo) app
-    ├── app/
-    │   ├── auth/           # Welcome, Signup, Login screens
-    │   ├── tabs/           # Home, Transactions, Analytics, Household, Settings
-    │   ├── add-expense.tsx # Add expense/income modal
-    │   ├── pay-bill.tsx    # Bill payment modal
-    │   └── fund-wallet.tsx # Wallet funding modal
-    ├── store/              # Zustand state management
-    ├── services/           # API client (Axios)
-    ├── types/              # TypeScript type definitions
-    └── constants/          # App colors, categories, providers
+├── backend/                  # NestJS API + Prisma
+└── mobile/                   # Native Android app
+    ├── app/src/main/java/com/tukutuku/synced/
+    │   ├── data/             # Retrofit, Room, DataStore, repositories
+    │   ├── di/               # Hilt modules
+    │   ├── sms/              # On-device SMS parsing
+    │   ├── ui/               # Jetpack Compose screens/components/theme
+    │   └── worker/           # WorkManager background sync
+    ├── app/src/main/res/     # Android resources
+    ├── app/build.gradle.kts
+    ├── gradle/libs.versions.toml
+    ├── settings.gradle.kts
+    └── gradlew
 ```
 
 ---
@@ -55,9 +34,9 @@ synced/
 | **Backend** | NestJS (TypeScript) |
 | **Database** | PostgreSQL + Prisma ORM |
 | **Cache/Queues** | Redis + BullMQ |
-| **Auth** | Phone OTP + JWT |
-| **Mobile** | React Native (Expo) |
-| **State** | Zustand + React Query |
+| **Auth** | Tuku Core identity + Synced product session |
+| **Mobile** | Native Android: Kotlin, Jetpack Compose, Hilt, Retrofit, Room, WorkManager |
+| **Mobile data/state** | ViewModels, StateFlow, Room, DataStore |
 | **API Docs** | Swagger/OpenAPI |
 
 ---
@@ -65,9 +44,10 @@ synced/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 20+ (backend only)
 - PostgreSQL 16+
 - Redis 7+
+- Android Studio with JDK 17 and Android SDK 36+ (mobile)
 
 ### 1. Clone & Setup Backend
 
@@ -99,15 +79,21 @@ npm run start:dev
 # Docs: http://localhost:3000/api/docs
 ```
 
-### 4. Start Mobile App
+### 4. Run the Android App
+
+The Android project is committed and built directly with Gradle. No Expo, EAS, Metro or Node runtime is required for the app.
 
 ```bash
 cd mobile
-npm install
-# Set API URL
-echo 'EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1' > .env
-npx expo start
+
+# Build a debug APK
+./gradlew assembleDebug
+
+# Install on a connected Android device/emulator
+./gradlew installDebug
 ```
+
+Or open the `mobile/` directory directly in Android Studio and press **Run**.
 
 ---
 
@@ -257,7 +243,7 @@ Full interactive docs at: `http://localhost:3000/api/docs`
 - [x] Daily ledger reconciliation
 - [x] Global search
 - [x] Demo seed data
-- [x] Mobile app (React Native/Expo)
+- [x] Native Android app (Kotlin + Jetpack Compose)
   - Welcome/Auth screens
   - Dashboard with balances + quick actions
   - Transaction list with filters
@@ -286,26 +272,33 @@ AIRTEL_API_KEY=...     # Airtel Money API key
 
 ## 📱 Mobile App
 
-The mobile app uses:
-- **Expo Router** for file-based navigation
-- **Zustand** for client state (auth, wallet, household)
-- **React Query** for server state + caching
-- **Axios** with JWT interceptors
+Synced Android is a fully native Kotlin application using the same operating model as TraffIQ:
+
+- **Jetpack Compose** for UI
+- **Compose Navigation** for in-app navigation and deep links
+- **Hilt** for dependency injection
+- **Retrofit + OkHttp + Kotlin serialization** for API access
+- **Room** for local transaction cache
+- **DataStore** for encrypted/session state coordination
+- **WorkManager** for background financial SMS sync
+- **Native Android SMS APIs** for on-device financial-message parsing
+- **Gradle + Android Studio** as the build/release source of truth
+
+There is no Expo CLI, Expo Router, EAS, Metro bundler, React Native runtime, npm mobile dependency tree or generated `android/` project.
 
 ### Key Screens
-| Screen | Path |
-|--------|------|
-| Welcome | `app/auth/welcome.tsx` |
-| Sign Up | `app/auth/signup.tsx` |
-| Login | `app/auth/login.tsx` |
-| Dashboard | `app/tabs/index.tsx` |
-| Transactions | `app/tabs/transactions.tsx` |
-| Analytics | `app/tabs/analytics.tsx` |
-| Household | `app/tabs/household.tsx` |
-| Settings | `app/tabs/settings.tsx` |
-| Add Expense | `app/add-expense.tsx` |
-| Pay Bill | `app/pay-bill.tsx` |
-| Fund Wallet | `app/fund-wallet.tsx` |
+
+| Screen | Native source |
+|--------|---------------|
+| Authentication | `ui/AuthScreen.kt` |
+| Home | `ui/HomeScreen.kt` |
+| Transactions | `ui/TransactionsScreen.kt` |
+| Plan | `ui/PlanScreen.kt` |
+| Baskets | `ui/BasketsScreen.kt` |
+| Household | `ui/HouseholdScreen.kt` |
+| Invite / Join | `ui/JoinInviteScreen.kt` |
+| SMS Sync | `ui/SmsSyncScreen.kt` |
+| Ask Synced | `ui/AskSyncedScreen.kt` |
 
 ---
 

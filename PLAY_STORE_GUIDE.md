@@ -14,84 +14,52 @@
 
 ## Step 1 — Build the APK / AAB
 
-### Option A — EAS Build (Recommended, Cloud-based)
-
-This requires no local Android SDK. EAS builds on Expo's servers.
+Synced Android is a native Kotlin/Jetpack Compose project. Build it directly with Gradle or Android Studio; Expo/EAS is not used.
 
 ```bash
-# In the mobile/ directory
-npm install -g @expo/eas-cli
-eas login           # login with your Expo account
-eas build:configure # creates eas.json
-eas build --platform android --profile production
+cd mobile
+
+# Debug build for local testing
+./gradlew assembleDebug
+
+# Signed release builds (requires the Synced signing environment variables)
+./gradlew assembleRelease
+./gradlew bundleRelease
 ```
 
-After the build completes (~10 min), download the `.aab` file from the EAS dashboard.
+Outputs:
+- AAB: `mobile/app/build/outputs/bundle/release/app-release.aab`
+- APK: `mobile/app/build/outputs/apk/release/app-release.apk`
 
-### Option B — Local Build (requires Android SDK)
-
-```bash
-cd mobile/
-npm install
-npx expo prebuild --platform android
-cd android/
-./gradlew bundleRelease     # produces AAB
-# or
-./gradlew assembleRelease   # produces APK
-```
-
-The output is at:
-- AAB: `android/app/build/outputs/bundle/release/app-release.aab`
-- APK: `android/app/build/outputs/apk/release/app-release.apk`
+The release build intentionally fails if signing credentials are absent rather than falling back to a debug key.
 
 ---
 
 ## Step 2 — Sign the App
 
-Google Play requires a signed AAB/APK.
+Google Play requires a signed AAB/APK. Synced's `mobile/app/build.gradle.kts` reads signing configuration from environment variables or Gradle properties:
 
-### Generate a Keystore (one-time)
+```text
+SYNCED_ANDROID_KEYSTORE_FILE
+SYNCED_ANDROID_KEYSTORE_PASSWORD
+SYNCED_ANDROID_KEY_ALIAS
+SYNCED_ANDROID_KEY_PASSWORD
+```
+
+Keep the keystore and passwords outside Git. On the production build host they are stored under `/opt/tuku/secrets` and are never committed to the repository.
+
+To create a new upload key only if the existing Play upload key has not already been established:
 
 ```bash
-keytool -genkey -v \
-  -keystore synced-release.keystore \
-  -alias synced \
+keytool -genkeypair -v \
+  -keystore synced-upload.jks \
+  -alias synced-upload \
   -keyalg RSA \
-  -keysize 2048 \
+  -keysize 4096 \
   -validity 10000
-
-# You will be asked for:
-# - Keystore password (save this securely!)
-# - Your name, organization, city, country
 ```
 
-> ⚠️ IMPORTANT: Back up `synced-release.keystore` and the password. If you lose it, you cannot update your app on the Play Store.
-
-### Configure signing in Gradle
-
-Edit `mobile/android/app/build.gradle`:
-
-```gradle
-android {
-  signingConfigs {
-    release {
-      storeFile file("../../synced-release.keystore")
-      storePassword "YOUR_STORE_PASSWORD"
-      keyAlias "synced"
-      keyPassword "YOUR_KEY_PASSWORD"
-    }
-  }
-  buildTypes {
-    release {
-      signingConfig signingConfigs.release
-      minifyEnabled true
-      proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-    }
-  }
-}
-```
-
-Then run: `./gradlew bundleRelease`
+Do not rotate the upload key casually after Play Console enrollment. Back up the keystore and credentials securely.
 
 ---
 
@@ -272,4 +240,4 @@ Update your landing page (`landing/index.html`) with the real Play Store URL —
 - [Play Console](https://play.google.com/console)
 - [SMS Permission Policy](https://support.google.com/googleplay/android-developer/answer/9047303)
 - [App Signing](https://developer.android.com/studio/publish/app-signing)
-- [EAS Build Docs](https://docs.expo.dev/build/introduction/)
+- [Android Studio build and release](https://developer.android.com/build)
