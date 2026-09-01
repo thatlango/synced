@@ -1,0 +1,36 @@
+name: Publish validated Synced v1.1.0 tree
+
+on:
+  push:
+    branches: [release/v1.1.0-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.event.head_commit.message == 'chore: bootstrap final release publish'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.1.0-hardening
+          fetch-depth: 0
+      - name: Fetch and verify validated release patch
+        env:
+          PATCH_URL: https://api.synced.tukutuku.org/__native_release/7c913d9b7a4e6c2f94f9c4c8c766b8df3bdf29c6ad69de66de2f662eb26a214e/final.patch
+          PATCH_SHA256: 60d1d84ec6c90bbe2ddc51f61d7a640a6b6f5aa75490a869a6a5adebf999e12b
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$PATCH_URL" --output /tmp/synced-final.patch
+          echo "$PATCH_SHA256  /tmp/synced-final.patch" | sha256sum --check --strict
+          git apply --check /tmp/synced-final.patch
+          git apply /tmp/synced-final.patch
+      - name: Commit exact validated tree
+        run: |
+          set -euo pipefail
+          git config user.name 'Synced Release Automation'
+          git config user.email 'release-bot@users.noreply.github.com'
+          git add -A
+          git commit -m 'release: harden Synced Android v1.1.0'
+          git push origin HEAD:release/v1.1.0-hardening
