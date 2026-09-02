@@ -55,17 +55,9 @@ class FinanceRepository @Inject constructor(
 
     suspend fun createInvite(targetType: String, targetId: String): Invite {
         val request = if (targetType == "basket") {
-            CreateInviteRequest(
-                targetType = "basket",
-                basketId = targetId,
-                role = "contributor",
-            )
+            CreateInviteRequest(targetType = "basket", basketId = targetId, role = "contributor")
         } else {
-            CreateInviteRequest(
-                targetType = "household",
-                householdId = targetId,
-                role = "member",
-            )
+            CreateInviteRequest(targetType = "household", householdId = targetId, role = "member")
         }
         return api.createInvite(request).data ?: error("Invite not created")
     }
@@ -96,6 +88,9 @@ class FinanceRepository @Inject constructor(
 
     suspend fun bills(includePaid: Boolean = false): List<Bill> =
         api.bills(includePaid).data.orEmpty()
+
+    suspend fun discoverRecurringBills(autoCreate: Boolean = false): RecurringDiscoveryResult =
+        api.discoverRecurringBills(RecurringDiscoveryRequest(autoCreate)).data ?: RecurringDiscoveryResult(autoCreate = autoCreate)
 
     suspend fun createBill(body: CreateBillRequest): Bill =
         api.createBill(body).data ?: error("Bill was not created")
