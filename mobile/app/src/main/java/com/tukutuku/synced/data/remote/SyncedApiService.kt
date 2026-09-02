@@ -54,6 +54,9 @@ interface SyncedApiService {
     @GET("bills/upcoming") suspend fun upcomingBills(
         @Query("days") days: Int = 30,
     ): ApiEnvelope<UpcomingBills>
+    @POST("bills/discover-recurring") suspend fun discoverRecurringBills(
+        @Body body: RecurringDiscoveryRequest,
+    ): ApiEnvelope<RecurringDiscoveryResult>
     @POST("bills") suspend fun createBill(@Body body: CreateBillRequest): ApiEnvelope<Bill>
     @PATCH("bills/{id}/mark-paid") suspend fun markBillPaid(@Path("id") id: String): ApiEnvelope<Bill>
 
