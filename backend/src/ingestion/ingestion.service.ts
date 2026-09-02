@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CategorizationService } from '../categorization/categorization.service';
 import { TransactionsService } from '../transactions/transactions.service';
@@ -246,6 +246,31 @@ const GENERIC_PATTERNS: SmsPattern[] = [
 
 const ALL_PATTERNS = [...MTN_PATTERNS, ...AIRTEL_PATTERNS, ...GENERIC_PATTERNS];
 
+const NON_TRANSACTION_SMS_PATTERNS = [
+  /\b(?:payment|transaction|debit|credit|withdrawal|deposit)\s+(?:request|prompt|reminder|pending|initiated|awaiting|scheduled)\b/i,
+  /\b(?:request to pay|payment request|collect request|please pay|amount due|due date|bill reminder|invoice reminder)\b/i,
+  /\b(?:enter|use)\s+(?:your\s+)?(?:pin|otp)\b|\bone[- ]time password\b|\bverification code\b/i,
+  /\b(?:authori[sz]e|approve)\s+(?:this|the|a)?\s*(?:payment|transaction|debit|transfer)\b/i,
+  /\b(?:will be|may be|can be)\s+(?:debited|credited|charged)\b/i,
+  /\b(?:failed|declined|unsuccessful|cancelled|canceled|reversal pending)\b/i,
+];
+
+const LEGACY_FALSE_SMS_DESCRIPTIONS = [
+  'payment prompt',
+  'payment request',
+  'request to pay',
+  'bill reminder',
+  'invoice reminder',
+  'transaction pending',
+  'payment pending',
+  'debit reminder',
+  'credit reminder',
+  'enter your pin',
+  'verification code',
+  'one-time password',
+  'amount due',
+];
+
 @Injectable()
 export class IngestionService {
   private readonly logger = new Logger(IngestionService.name);
@@ -259,6 +284,7 @@ export class IngestionService {
   // ─── SMS Parsing ──────────────────────────────────────────────
 
   parseSms(smsBody: string): ParsedSmsTransaction | null {
+    if (!smsBody?.trim() || NON_TRANSACTION_SMS_PATTERNS.some((pattern) => pattern.test(smsBody))) return null;
     for (const pattern of ALL_PATTERNS) {
       const match = smsBody.match(pattern.regex);
       if (match) {
@@ -369,6 +395,66 @@ export class IngestionService {
       }
       throw error;
     }
+  }
+
+  async reconcileSmsHistory(userId: string, walletId: string, referenceIds: string[]) {
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { id: walletId, userId, type: 'personal' },
+      select: { id: true },
+    });
+    if (!wallet) throw new NotFoundException('Personal wallet not found or not available to this account');
+
+    const fingerprints = [...new Set((referenceIds || [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter((value) => /^[a-f0-9]{64}$/.test(value)))]
+      .slice(0, 2500);
+
+    const candidates = await this.prisma.transaction.findMany({
+      where: {
+        walletId,
+        userId,
+        source: { in: ['mtn', 'airtel', 'sms'] },
+        OR: [
+          ...(fingerprints.length ? [{ referenceId: { in: fingerprints } }] : []),
+          ...LEGACY_FALSE_SMS_DESCRIPTIONS.map((phrase) => ({
+            description: { contains: phrase, mode: 'insensitive' as const },
+          })),
+        ],
+      },
+      select: { id: true, referenceId: true },
+    });
+
+    if (!candidates.length) {
+      return { reviewed: fingerprints.length, removed: 0, walletBalance: Number((await this.prisma.wallet.findUnique({ where: { id: walletId } }))?.balance || 0) };
+    }
+
+    const ids = candidates.map((row) => row.id);
+    const walletBalance = await this.prisma.$transaction(async (tx) => {
+      await tx.ledgerEntry.deleteMany({ where: { transactionId: { in: ids } } });
+      await tx.transaction.deleteMany({ where: { id: { in: ids } } });
+
+      const remaining = await tx.ledgerEntry.findMany({
+        where: { walletId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, type: true, amount: true },
+      });
+
+      let runningBalance = 0;
+      for (const entry of remaining) {
+        const balanceBefore = runningBalance;
+        runningBalance += entry.type === 'credit' ? Number(entry.amount) : -Number(entry.amount);
+        await tx.ledgerEntry.update({
+          where: { id: entry.id },
+          data: { balanceBefore, balanceAfter: runningBalance },
+        });
+      }
+
+      await tx.wallet.update({ where: { id: walletId }, data: { balance: runningBalance } });
+      return runningBalance;
+    });
+
+    this.logger.log(`SMS history repair removed ${ids.length} false/imported transfer row(s), user=${userId}`);
+    return { reviewed: fingerprints.length, removed: ids.length, walletBalance };
   }
 
   async ingestCandidateBulk(

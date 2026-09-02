@@ -2,65 +2,20 @@ package com.tukutuku.synced.sms
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SmsTransactionParserTest {
-    @Test
-    fun `uses transaction amount instead of balance amount`() {
-        val result = SmsTransactionParser.parse(
-            sender = "MTN MoMo",
-            body = "Your balance is UGX 300,000. Your payment of UGX 15,000 to Cafe Javas has been completed.",
-            timestamp = 1L,
-        )
-
-        assertNotNull(result)
-        assertEquals(15_000.0, result!!.amount, 0.0)
-        assertEquals("debit", result.type)
-        assertEquals("Cafe Javas", result.merchant)
-        assertEquals("mtn", result.source)
-    }
-
-    @Test
-    fun `parses received mobile money`() {
-        val result = SmsTransactionParser.parse(
-            sender = "MobileMoney",
-            body = "You have received UGX 50,000 from Jane Doe. Your new balance is UGX 80,000.",
-            timestamp = 2L,
-        )
-
-        assertNotNull(result)
-        assertEquals(50_000.0, result!!.amount, 0.0)
-        assertEquals("credit", result.type)
-        assertEquals("Jane Doe", result.merchant)
-        assertEquals("mtn", result.source)
-    }
-
-    @Test
-    fun `parses common bank credit without mobile money provider marker`() {
-        val result = SmsTransactionParser.parse(
-            sender = "Stanbic",
-            body = "Stanbic Bank: UGX 500,000 credited to your account ending 1234.",
-            timestamp = 3L,
-        )
-
-        assertNotNull(result)
-        assertEquals(500_000.0, result!!.amount, 0.0)
-        assertEquals("credit", result.type)
-        assertEquals("sms", result.source)
-    }
-
-    @Test
-    fun `parses airtel payment`() {
-        val result = SmsTransactionParser.parse(
-            sender = "AirtelMoney",
-            body = "Your Airtel Money payment of UGX 25,000 to NWSC was successful.",
-            timestamp = 4L,
-        )
-
-        assertNotNull(result)
-        assertEquals(25_000.0, result!!.amount, 0.0)
-        assertEquals("debit", result.type)
-        assertEquals("NWSC", result.merchant)
-        assertEquals("airtel", result.source)
-    }
+    @Test fun `uses transaction amount instead of balance amount`() { val r=SmsTransactionParser.parse("MTN MoMo","Your balance is UGX 300,000. Your payment of UGX 15,000 to Cafe Javas has been completed.",1L); assertNotNull(r); assertEquals(15000.0,r!!.amount,0.0); assertEquals("debit",r.type); assertEquals("Cafe Javas",r.merchant); assertEquals("mtn",r.source) }
+    @Test fun `parses received mobile money`() { val r=SmsTransactionParser.parse("MobileMoney","You have received UGX 50,000 from Jane Doe. Your new balance is UGX 80,000.",2L); assertNotNull(r); assertEquals(50000.0,r!!.amount,0.0); assertEquals("credit",r.type); assertEquals("Jane Doe",r.merchant); assertEquals("mtn",r.source) }
+    @Test fun `parses common bank credit without mobile money provider marker`() { val r=SmsTransactionParser.parse("Stanbic","Stanbic Bank: UGX 500,000 credited to your account ending 1234.",3L); assertNotNull(r); assertEquals(500000.0,r!!.amount,0.0); assertEquals("credit",r.type); assertEquals("Stanbic",r.merchant); assertEquals("sms",r.source) }
+    @Test fun `parses airtel payment`() { val r=SmsTransactionParser.parse("AirtelMoney","Your Airtel Money payment of UGX 25,000 to NWSC was successful.",4L); assertNotNull(r); assertEquals(25000.0,r!!.amount,0.0); assertEquals("debit",r.type); assertEquals("NWSC",r.merchant); assertEquals("airtel",r.source) }
+    @Test fun `parses account credited wording`() { val r=SmsTransactionParser.parse("BANK","Your account has been credited with UGX 10,000.",5L); assertNotNull(r); assertEquals(10000.0,r!!.amount,0.0); assertEquals("credit",r.type) }
+    @Test fun `parses you have been debited wording`() { val r=SmsTransactionParser.parse("BANK","You have been debited UGX 5,000.",6L); assertNotNull(r); assertEquals(5000.0,r!!.amount,0.0); assertEquals("debit",r.type) }
+    @Test fun `rejects payment prompt even when it contains an amount`() { assertNull(SmsTransactionParser.parse("AirtelMoney","Payment request: UGX 25,000 from Merchant. Enter your PIN to approve this payment.",7L)) }
+    @Test fun `rejects bill reminder and future debit notice`() { assertNull(SmsTransactionParser.parse("BANK","Bill reminder: UGX 40,000 is due tomorrow and your account will be debited.",8L)) }
+    @Test fun `reconciles bank to momo movement as internal transfer`() { val a=SmsTransactionParser.parse("Stanbic","Stanbic Bank: UGX 5,000 debited from your account.",1000000L)!!; val b=SmsTransactionParser.parse("MTN MoMo","You have received UGX 5,000 from STANBIC BANK. Your new balance is UGX 5,000.",1000120L)!!; val r=SmsTransferReconciler.reconcile(listOf(a,b)); assertEquals(1,r.internalTransferPairs); assertTrue(r.candidates.isEmpty()); assertEquals(2,r.reconciledReferenceIds.size) }
+    @Test fun `does not pair external income with smaller momo transfer`() { val income=SmsTransactionParser.parse("Stanbic","Stanbic Bank: UGX 10,000 credited to your account.",2000000L)!!; val d=SmsTransactionParser.parse("Stanbic","Stanbic Bank: UGX 5,000 debited from your account.",2001000L)!!; val c=SmsTransactionParser.parse("MTN MoMo","You have received UGX 5,000 from STANBIC BANK.",2001100L)!!; val r=SmsTransferReconciler.reconcile(listOf(income,d,c)); assertEquals(1,r.internalTransferPairs); assertEquals(1,r.candidates.size); assertEquals(10000.0,r.candidates.single().amount,0.0); assertEquals("credit",r.candidates.single().type) }
+    @Test fun `fingerprint is stable for repair matching`() { val body="Payment request: UGX 25,000. Enter your PIN to approve this payment."; assertTrue(SmsTransactionParser.isExplicitNonMovement(body)); assertEquals(SmsTransactionParser.fingerprint("AirtelMoney",body,1234L),SmsTransactionParser.fingerprint("AirtelMoney",body,1234L)); assertEquals(64,SmsTransactionParser.fingerprint("AirtelMoney",body,1234L).length) }
 }
