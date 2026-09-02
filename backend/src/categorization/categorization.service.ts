@@ -23,21 +23,20 @@ type CategoryRule = {
   category: Category;
 };
 
-// Order is intentional. Specific income and bill semantics must win before
-// generic MoMo / transfer language such as "received from" or "payment to".
+// Order is intentional. Specific income, borrowing and bill semantics must win
+// before generic MoMo / transfer language such as "received from" or "payment to".
 const CATEGORY_RULES: CategoryRule[] = [
-  // ── Income semantics ──────────────────────────────────────────────────────
+  // ── Income / inflow semantics ─────────────────────────────────────────────
   {
     patterns: [
-      /\bsalary\b|\bpayroll\b|\bwage\b|\bpay slip\b/i,
+      /\bsalary\b(?!\s+advance\b)|\bpayroll\b|\bwage\b|\bpay slip\b/i,
       /\bmonthly pay\b|\bnet pay\b|\bbasic salary\b|\bemployer payment\b/i,
       /\bsalary income received\b/i,
     ],
     category: 'salary',
   },
   {
-    // Refunds/reversals are cash inflows but not earned income. Keep them out
-    // of salary while still separating them from ordinary spending.
+    // Refunds/reversals are cash inflows but not earned income.
     patterns: [
       /\brefund(?:ed)?\b|\breversal\b|\breversed\b|\bcashback\b|\bchargeback\b/i,
     ],
@@ -51,21 +50,29 @@ const CATEGORY_RULES: CategoryRule[] = [
     category: 'savings',
   },
   {
-    // These are useful income/inflow types in the SMS description even though
-    // the current canonical category enum groups them under transfer.
+    // Borrowing is cash-in, not earned income. Repayments received are also
+    // inflows rather than expenses. More specific debt semantics live in
+    // Transaction.metadata while the stable category remains transfer.
+    patterns: [
+      /\bloan disbursement(?: received)?\b|\bloan proceeds received\b|\bloan (?:amount )?credited\b/i,
+      /\bcredit facility disbursed\b|\badvance (?:disbursed|credited)\b/i,
+      /\bloan repayment received\b|\bdebt repayment received\b|\brepayment received from\b/i,
+    ],
+    category: 'transfer',
+  },
+  {
     patterns: [
       /\bbusiness income received\b|\bclient payment\b|\bcustomer payment\b/i,
       /\bsales revenue\b|\bsales proceeds\b|\binvoice payment\b|\bmerchant settlement\b/i,
       /\bfreelance (?:or consulting )?income\b|\bconsulting income\b|\bconsultancy payment\b/i,
       /\bprofessional fee\b|\bgig payment\b/i,
       /\bgift,? grant or allowance received\b|\bgift income\b|\bgrant received\b|\ballowance received\b/i,
-      /\bloan proceeds received\b|\bloan disbursement\b|\bloan credited\b/i,
       /\bcash deposit received\b|\bcash[ -]?in\b/i,
     ],
     category: 'transfer',
   },
 
-  // ── Bill types ────────────────────────────────────────────────────────────
+  // ── Bill / debt obligations ───────────────────────────────────────────────
   {
     patterns: [
       /\bnwsc\b|\bwater bill\b|\bwater payment\b|\bwater utility\b/i,
@@ -108,12 +115,19 @@ const CATEGORY_RULES: CategoryRule[] = [
     category: 'subscriptions',
   },
   {
-    // The existing schema intentionally has a generic bill_payment category.
-    // Preserve the specific bill type in the normalized description while
-    // routing loan, insurance and statutory obligations into that category.
+    // Principal repayment is not ordinary consumption, but the current stable
+    // taxonomy uses bill_payment for obligations. Metadata preserves whether
+    // each movement is principal, interest, fee, penalty or another debt type.
     patterns: [
-      /\bloan repayment\b|\bloan instalment\b|\bloan installment\b/i,
-      /\bcredit repayment\b|\bmicrofinance repayment\b/i,
+      /\bloan repayment\b|\bloan payment\b|\bloan instalment\b|\bloan installment\b/i,
+      /\bcredit (?:facility )?repayment\b|\bmicrofinance repayment\b|\bsacco loan repayment\b/i,
+      /\bsalary advance repayment\b|\bcash advance repayment\b|\boverdraft repayment\b/i,
+      /\bloan interest payment\b|\binterest payment to .*lender\b|\bfinance charge\b/i,
+      /\bloan fee payment\b|\bprocessing fee\b|\bfacility fee\b|\borigination fee\b/i,
+      /\bloan penalty payment\b|\blate payment fee\b|\bdefault fee\b|\barrears fee\b/i,
+      /\bdebt repayment\b|\bdebt payment\b|\bdebt settlement\b|\bsettled debt\b/i,
+      /\barrears payment\b|\barrears repayment\b/i,
+      /\bcredit card payment\b|\bcard repayment\b|\bbnpl repayment\b|\bbuy now pay later repayment\b/i,
       /\binsurance premium\b|\bpremium payment\b|\bpolicy premium\b/i,
       /\btax or statutory fee\b|\btax payment\b|\bgovernment fee\b|\blicen[cs]e fee\b/i,
       /\bura\b|\bstatutory fee\b/i,
