@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsOptional,
   IsNotEmpty,
+  IsDateString,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -58,6 +59,11 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   referenceId?: string;
+
+  @ApiPropertyOptional({ description: 'Original transaction time when importing historical records' })
+  @IsOptional()
+  @IsDateString()
+  occurredAt?: string;
 
   @ApiPropertyOptional({ enum: ['personal', 'household', 'both'], default: 'personal' })
   @IsOptional()
