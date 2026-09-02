@@ -1,8 +1,24 @@
 import {
   IsString, IsNumber, IsPositive, IsOptional, IsBoolean,
-  IsDateString, IsEnum, IsNotEmpty,
+  IsDateString, IsEnum, IsNotEmpty, IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export const BILL_CATEGORIES = [
+  'food',
+  'transport',
+  'utilities',
+  'subscriptions',
+  'rent',
+  'school_fees',
+  'entertainment',
+  'healthcare',
+  'shopping',
+  'fuel',
+  'mobile_data',
+  'bill_payment',
+  'other',
+] as const;
 
 export class CreateBillDto {
   @ApiPropertyOptional({ enum: ['user', 'household'], default: 'user' })
@@ -20,9 +36,9 @@ export class CreateBillDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiPropertyOptional({ example: 'utilities' })
+  @ApiPropertyOptional({ example: 'utilities', enum: BILL_CATEGORIES })
   @IsOptional()
-  @IsString()
+  @IsIn(BILL_CATEGORIES)
   category?: string;
 
   @ApiProperty({ example: 35000 })
@@ -41,7 +57,7 @@ export class CreateBillDto {
 
   @ApiPropertyOptional({ enum: ['monthly', 'quarterly', 'annually'] })
   @IsOptional()
-  @IsString()
+  @IsIn(['monthly', 'quarterly', 'annually'])
   billingCycle?: string;
 
   @ApiPropertyOptional({ example: 'NWSC' })
