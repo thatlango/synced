@@ -27,14 +27,59 @@ export class TransactionsService {
     });
     if (!wallet) throw new NotFoundException('Wallet not found or not available to this account');
 
-    if (dto.type === 'debit' && Number(wallet.balance) < dto.amount) {
-      throw new BadRequestException('Insufficient wallet balance');
-    }
+    const timestampMarker = dto.description?.match(/\s*\[synced-ts:(\d{10,13})\]\s*$/);
+    const cleanDescription = dto.description
+      ?.replace(/\s*\[synced-ts:\d{10,13}\]\s*$/, '')
+      .trim();
+    const markerDate = timestampMarker ? new Date(Number(timestampMarker[1])) : null;
+    const occurredAt = dto.occurredAt
+      ? new Date(dto.occurredAt)
+      : markerDate && !Number.isNaN(markerDate.getTime())
+        ? markerDate
+        : new Date();
 
-    // Auto-categorize if not provided
+    const isHistoricalFinancialImport = Boolean(
+      (dto.occurredAt || timestampMarker) && ['mtn', 'airtel', 'sms'].includes(dto.source || ''),
+    );
     const category =
       dto.category ||
-      this.categorization.categorize(dto.description || '', dto.merchant);
+      this.categorization.categorize(cleanDescription || '', dto.merchant);
+
+    // A manual rescan keeps the same one-way SMS reference fingerprint. Older
+    // Synced builds imported those rows at sync time, so reconcile their original
+    // occurrence date instead of treating them as new money or rejecting them as
+    // duplicates. No wallet balance is changed in this path.
+    if (isHistoricalFinancialImport && dto.referenceId) {
+      const existing = await this.prisma.transaction.findUnique({
+        where: { referenceId: dto.referenceId },
+      });
+      if (existing && existing.userId === userId && existing.walletId === dto.walletId) {
+        return this.prisma.$transaction(async (tx) => {
+          const transaction = await tx.transaction.update({
+            where: { id: existing.id },
+            data: {
+              createdAt: occurredAt,
+              description: cleanDescription,
+              merchant: dto.merchant,
+              category: category as any,
+            },
+          });
+          await tx.ledgerEntry.updateMany({
+            where: { transactionId: existing.id },
+            data: {
+              createdAt: occurredAt,
+              description: cleanDescription,
+              category: category as any,
+            },
+          });
+          return transaction;
+        });
+      }
+    }
+
+    if (dto.type === 'debit' && Number(wallet.balance) < dto.amount && !isHistoricalFinancialImport) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
 
     const balanceBefore = Number(wallet.balance);
     const balanceAfter =
@@ -43,7 +88,6 @@ export class TransactionsService {
         : balanceBefore - dto.amount;
 
     return this.prisma.$transaction(async (tx) => {
-      // Create transaction record
       const transaction = await tx.transaction.create({
         data: {
           walletId: dto.walletId,
@@ -51,15 +95,15 @@ export class TransactionsService {
           type: dto.type as any,
           amount: dto.amount,
           category: category as any,
-          description: dto.description,
+          description: cleanDescription,
           merchant: dto.merchant,
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
           referenceId: dto.referenceId || undefined,
+          createdAt: occurredAt,
         },
       });
 
-      // Update wallet balance
       await tx.wallet.update({
         where: { id: dto.walletId },
         data: {
@@ -70,7 +114,6 @@ export class TransactionsService {
         },
       });
 
-      // Create ledger entry
       await tx.ledgerEntry.create({
         data: {
           walletId: dto.walletId,
@@ -83,8 +126,9 @@ export class TransactionsService {
           category: category as any,
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
-          description: dto.description,
+          description: cleanDescription,
           referenceId: dto.referenceId || transaction.id,
+          createdAt: occurredAt,
         },
       });
 
@@ -97,7 +141,6 @@ export class TransactionsService {
     const limit = dto.limit || 20;
     const skip = (page - 1) * limit;
 
-    // Get user's wallets
     const userWallets = await this.prisma.wallet.findMany({
       where: { userId },
     });
@@ -172,7 +215,6 @@ export class TransactionsService {
     else if (period === 'month') startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     else startDate = new Date(now.getFullYear(), 0, 1);
 
-    // Get personal wallet
     const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new NotFoundException('Wallet not found');
 

@@ -2,8 +2,10 @@ import { addDays, subDays } from 'date-fns';
 import { InsightsService } from './insights.service';
 
 describe('InsightsService obligation-aware summary', () => {
+  const createService = () => new InsightsService({} as any, {} as any, {} as any);
+
   it('prioritises overdue and near-term obligations over generic spending commentary', async () => {
-    const service = new InsightsService({} as any, {} as any);
+    const service = createService();
     jest.spyOn(service, 'financialContext').mockResolvedValue({
       currency: 'UGX',
       balance: 100_000,
@@ -28,6 +30,7 @@ describe('InsightsService obligation-aware summary', () => {
           recurring: true,
         },
       ],
+      detectedRecurringPatterns: [],
     } as any);
 
     const result = await service.summary('user-1');
@@ -40,8 +43,36 @@ describe('InsightsService obligation-aware summary', () => {
     expect(result.deterministicInsight).toContain('UGX 30,000');
   });
 
-  it('falls back to spending analysis when there are no known obligations', async () => {
-    const service = new InsightsService({} as any, {} as any);
+  it('surfaces a recurring-payment suggestion when no tracked obligation is due', async () => {
+    const service = createService();
+    jest.spyOn(service, 'financialContext').mockResolvedValue({
+      currency: 'UGX',
+      balance: 500_000,
+      monthSpend: 200_000,
+      monthIncome: 400_000,
+      priorThreeMonthSpend: 600_000,
+      upcomingObligations: [],
+      detectedRecurringPatterns: [
+        {
+          name: 'NWSC',
+          billingCycle: 'monthly',
+          expectedAmount: 45_000,
+          confidence: 0.81,
+          linkedBillId: null,
+        },
+      ],
+    } as any);
+
+    const result = await service.summary('user-1');
+
+    expect(result.nextBill).toBeNull();
+    expect(result.recurrenceInsight).toContain('NWSC');
+    expect(result.recurrenceInsight).toContain('81% confidence');
+    expect(result.deterministicInsight).toContain('possible monthly NWSC payment');
+  });
+
+  it('falls back to spending analysis when there are no known or inferred obligations', async () => {
+    const service = createService();
     jest.spyOn(service, 'financialContext').mockResolvedValue({
       currency: 'UGX',
       balance: 500_000,
@@ -49,6 +80,7 @@ describe('InsightsService obligation-aware summary', () => {
       monthIncome: 400_000,
       priorThreeMonthSpend: 600_000,
       upcomingObligations: [],
+      detectedRecurringPatterns: [],
     } as any);
 
     const result = await service.summary('user-1');

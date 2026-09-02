@@ -28,10 +28,19 @@ export class BillsController {
   }
 
   @Get('upcoming')
-  @ApiOperation({ summary: 'Get upcoming bills + subscriptions' })
+  @ApiOperation({ summary: 'Get upcoming bills + subscriptions, including inferred recurring obligations' })
   @ApiQuery({ name: 'days', required: false, type: Number })
   getUpcoming(@CurrentUser('id') userId: string, @Query('days') days?: number) {
     return this.billsService.getUpcomingBills(userId, days);
+  }
+
+  @Post('detect-recurring')
+  @ApiOperation({ summary: 'Analyse transaction history for recurring obligations and optionally auto-create strong matches' })
+  detectRecurring(
+    @CurrentUser('id') userId: string,
+    @Body() body?: { autoCreate?: boolean },
+  ) {
+    return this.billsService.detectRecurring(userId, body?.autoCreate !== false);
   }
 
   @Get(':id')
@@ -41,7 +50,7 @@ export class BillsController {
   }
 
   @Patch(':id/mark-paid')
-  @ApiOperation({ summary: 'Mark a bill as paid' })
+  @ApiOperation({ summary: 'Mark a bill as paid and roll recurring bills into their next cycle' })
   markPaid(@Param('id') id: string) {
     return this.billsService.markPaid(id);
   }

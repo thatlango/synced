@@ -99,7 +99,9 @@ data class Bill(
     val billingCycle: String? = null,
     val provider: String? = null,
     val accountRef: String? = null,
-)
+) {
+    val inferredBySynced: Boolean get() = accountRef?.startsWith("synced:recurrence:") == true
+}
 
 @Serializable
 data class Subscription(
@@ -128,9 +130,43 @@ data class UpcomingSummary(
 )
 
 @Serializable
+data class RecurringPatternInsight(
+    val patternKey: String = "",
+    val name: String = "",
+    val provider: String? = null,
+    val category: String = "other",
+    @Serializable(with = FlexibleDoubleSerializer::class) val expectedAmount: Double = 0.0,
+    val occurrences: Int = 0,
+    val billingCycle: String = "monthly",
+    @Serializable(with = FlexibleDoubleSerializer::class) val confidence: Double = 0.0,
+    @Serializable(with = FlexibleDoubleSerializer::class) val cadenceScore: Double = 0.0,
+    @Serializable(with = FlexibleDoubleSerializer::class) val amountStability: Double = 0.0,
+    val lastSeen: String? = null,
+    val nextDue: String? = null,
+    val autoCreateEligible: Boolean = false,
+    val autoCreated: Boolean = false,
+    val linkedBillId: String? = null,
+    val evidence: String = "",
+)
+
+@Serializable
+data class RecurringDetectionSummary(
+    val autoCreated: Int = 0,
+    val candidates: Int = 0,
+)
+
+@Serializable
+data class RecurringDetectionResult(
+    val patterns: List<RecurringPatternInsight> = emptyList(),
+    val autoCreated: Int = 0,
+)
+
+@Serializable
 data class UpcomingBills(
     val bills: List<Bill> = emptyList(),
     val subscriptions: List<Subscription> = emptyList(),
+    val detectedPatterns: List<RecurringPatternInsight> = emptyList(),
+    val recurringDetection: RecurringDetectionSummary = RecurringDetectionSummary(),
     val summary: UpcomingSummary = UpcomingSummary(),
 )
 
@@ -147,6 +183,9 @@ data class CreateBillRequest(
     val provider: String? = null,
     val accountRef: String? = null,
 )
+
+@Serializable
+data class DetectRecurringRequest(val autoCreate: Boolean = true)
 
 @Serializable
 data class HouseholdMemberSpend(

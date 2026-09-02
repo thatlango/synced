@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ReceiptLong
@@ -44,7 +45,7 @@ fun BillsScreen(
                 Spacer(Modifier.width(4.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Bills & recurring", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Ink)
-                    Text("Know what is due before it surprises you.", color = Muted)
+                    Text("Synced also learns recurring obligations from your payment history.", color = Muted)
                 }
                 FilledIconButton(onClick = { showCreate = true }) { Icon(Icons.Outlined.Add, "Add bill") }
             }
@@ -62,13 +63,95 @@ fun BillsScreen(
                             fontWeight = FontWeight.Black,
                         )
                         Text(
-                            "${data.summary.count} bill${if (data.summary.count == 1) "" else "s"} and recurring charge${if (data.summary.count == 1) "" else "s"}",
+                            "${data.summary.count} known obligation${if (data.summary.count == 1) "" else "s"}",
                             color = androidx.compose.ui.graphics.Color.White.copy(alpha = .68f),
                         )
                         Spacer(Modifier.height(16.dp))
                         Row(Modifier.fillMaxWidth()) {
                             BillMetric("Bills", money(data.summary.billsTotal), Modifier.weight(1f))
                             BillMetric("Subscriptions", money(data.summary.subscriptionsTotal), Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            if (data.recurringDetection.autoCreated > 0) {
+                item {
+                    InsightCard(
+                        "Synced found ${data.recurringDetection.autoCreated} strong recurring payment pattern${if (data.recurringDetection.autoCreated == 1) "" else "s"} and created the next bill automatically."
+                    )
+                }
+            }
+
+            if (data.detectedPatterns.isNotEmpty()) {
+                item {
+                    SectionTitle("Detected from your payments")
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "Synced compares provider, timing and amount patterns. Strong bill-like matches are tracked automatically; weaker matches stay suggestions.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                items(data.detectedPatterns.take(6), key = { it.patternKey }) { pattern ->
+                    SyncedCard(containerColor = SecondarySoft) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Surface(shape = MaterialTheme.shapes.medium, color = Surface) {
+                                Icon(Icons.Outlined.AutoAwesome, null, tint = Secondary, modifier = Modifier.padding(11.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(pattern.name, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
+                                    StatusPill(
+                                        when {
+                                            pattern.linkedBillId != null -> "Tracked"
+                                            pattern.autoCreateEligible -> "Strong match"
+                                            else -> "Possible"
+                                        },
+                                        when {
+                                            pattern.linkedBillId != null -> "success"
+                                            pattern.autoCreateEligible -> "primary"
+                                            else -> "neutral"
+                                        },
+                                    )
+                                }
+                                Text(
+                                    "${categoryLabel(pattern.category)} • ${pattern.billingCycle} • ${(pattern.confidence * 100).toInt()}% confidence",
+                                    color = Muted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Spacer(Modifier.height(5.dp))
+                                Text(pattern.evidence, color = Muted, style = MaterialTheme.typography.bodySmall)
+                                Spacer(Modifier.height(7.dp))
+                                Text(
+                                    "Expected ${money(pattern.expectedAmount)} • next ${shortDate(pattern.nextDue)}",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Ink,
+                                )
+                            }
+                        }
+                        if (pattern.linkedBillId == null && pattern.nextDue != null) {
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    vm.create(
+                                        CreateBillRequest(
+                                            name = pattern.name,
+                                            category = pattern.category,
+                                            amount = pattern.expectedAmount,
+                                            dueDate = pattern.nextDue.take(10),
+                                            recurring = true,
+                                            billingCycle = pattern.billingCycle,
+                                            provider = pattern.provider ?: pattern.name,
+                                            accountRef = "synced:recurrence:${pattern.patternKey.replace(" ", "-")}",
+                                        ),
+                                    ) { }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Track as recurring bill")
+                            }
                         }
                     }
                 }
@@ -81,7 +164,10 @@ fun BillsScreen(
             item {
                 EmptyState(
                     "No upcoming obligations",
-                    "Add rent, utilities, school fees or other recurring bills. Synced will bring them into your plan, forecast and recommendations.",
+                    if (data?.detectedPatterns?.isNotEmpty() == true)
+                        "No tracked bill is due yet. Review the recurring-payment patterns above."
+                    else
+                        "Add rent, utilities, school fees or sync transaction history. Synced will detect recurring obligations and bring them into your forecast.",
                     "Add a bill",
                     { showCreate = true },
                 )
@@ -99,13 +185,20 @@ fun BillsScreen(
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(bill.name, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
-                                    if (bill.recurring) StatusPill("Recurring", "primary")
+                                    if (bill.inferredBySynced) {
+                                        StatusPill("Detected", "success")
+                                    } else if (bill.recurring) {
+                                        StatusPill("Recurring", "primary")
+                                    }
                                 }
                                 Text(
                                     listOfNotNull(categoryLabel(bill.category), bill.provider).joinToString(" • "),
                                     color = Muted,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
+                                if (bill.inferredBySynced) {
+                                    Text("Created from a recurring payment pattern", color = Secondary, style = MaterialTheme.typography.bodySmall)
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 Text(money(bill.amount, bill.currency), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Ink)
                                 Text("Due ${shortDate(bill.dueDate)}", color = Warning, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
@@ -115,7 +208,7 @@ fun BillsScreen(
                         OutlinedButton(onClick = { vm.markPaid(bill.id) }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Outlined.CheckCircle, null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Mark as paid")
+                            Text(if (bill.recurring) "Mark paid and schedule next" else "Mark as paid")
                         }
                     }
                 }
