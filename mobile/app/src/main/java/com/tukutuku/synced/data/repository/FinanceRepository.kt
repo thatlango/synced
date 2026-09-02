@@ -43,6 +43,9 @@ class FinanceRepository @Inject constructor(
     suspend fun personalForecast(): PersonalForecast? =
         api.personalForecast().data
 
+    suspend fun personalAnalytics(): PersonalAnalytics? =
+        api.personalAnalytics().data
+
     suspend fun baskets(): List<Basket> = api.baskets().data.orEmpty()
 
     suspend fun createBasket(body: CreateBasketRequest): Basket =
