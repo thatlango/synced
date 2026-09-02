@@ -30,7 +30,6 @@ class IngestBulkSmsDto {
   smsBodies: string[];
 }
 
-
 class StructuredSmsCandidateDto {
   @ApiProperty({ example: 50000 })
   @IsNumber()
@@ -69,6 +68,65 @@ class StructuredSmsCandidateDto {
   @Min(0)
   @Max(1)
   confidence?: number;
+
+  @ApiProperty({ required: false, enum: ['loan', 'debt'] })
+  @IsOptional()
+  @IsIn(['loan', 'debt'])
+  financialKind?: 'loan' | 'debt';
+
+  @ApiProperty({ required: false, example: 'loan_repayment' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  financialSubtype?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  counterparty?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  principalAmount?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  interestAmount?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  feeAmount?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  penaltyAmount?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  outstandingBalance?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  dueAmount?: number;
+
+  @ApiProperty({ required: false, description: 'Due date extracted locally from the SMS when present.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  dueDate?: string;
 }
 
 class IngestCandidateBulkDto {
@@ -109,7 +167,6 @@ export class IngestionController {
   ingestBulkSms(@CurrentUser('id') userId: string, @Body() dto: IngestBulkSmsDto) {
     return this.ingestionService.ingestBulkSms(userId, dto.walletId, dto.smsBodies);
   }
-
 
   @Post('sms/candidates/bulk')
   @ApiOperation({ summary: 'Ingest locally parsed financial SMS candidates without receiving raw message text' })
