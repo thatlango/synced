@@ -16,7 +16,7 @@ export class ForecastsService {
     const { avgMonthlySpend, avgMonthlyIncome, burnRate } =
       await this.getSpendingStats(wallet.id, historyWindowMonths);
 
-    const [activeSubscriptions, futureBills] = await Promise.all([
+    const [activeSubscriptions, openBills] = await Promise.all([
       this.prisma.subscription.findMany({
         where: { userId, ownerType: 'user', status: 'active' },
         orderBy: { nextDueDate: 'asc' },
@@ -26,7 +26,7 @@ export class ForecastsService {
           userId,
           ownerType: 'user',
           isPaid: false,
-          dueDate: { gte: now, lte: addMonths(now, 3) },
+          dueDate: { lte: addMonths(now, 3) },
         },
         orderBy: { dueDate: 'asc' },
       }),
@@ -43,7 +43,7 @@ export class ForecastsService {
     }, 0);
 
     const obligationCutoff = addDays(now, 30);
-    const upcomingBillCost = futureBills
+    const upcomingBillCost = openBills
       .filter((b) => b.dueDate <= obligationCutoff)
       .reduce((sum, b) => sum + Number(b.amount), 0);
     const upcomingSubscriptionCost = activeSubscriptions
@@ -52,8 +52,8 @@ export class ForecastsService {
     const upcomingObligations = upcomingBillCost + upcomingSubscriptionCost;
 
     // Cash runway is intentionally independent of the user's plan assumption.
-    // Reserve obligations that are already known to be due, then compare the
-    // remaining recorded wallet balance with historical ledger spending.
+    // Reserve overdue and near-term obligations that are already known, then
+    // compare the remaining recorded wallet balance with historical spending.
     const runwayBalance = Math.max(0, currentBalance - upcomingObligations);
     const daysUntilZero = burnRate > 0
       ? Math.floor(runwayBalance / (burnRate / 30))
@@ -61,14 +61,15 @@ export class ForecastsService {
         ? 999
         : 0;
 
-    // Project balance over the next 3 months. Known bills are applied in the
-    // month they are due; recurring subscriptions are normalized monthly.
+    // Project balance over the next 3 months. Future bills are applied in the
+    // month they are due; overdue bills have already been reserved in runway.
     const projections = [];
     let projectedBalance = currentBalance;
     for (let i = 1; i <= 3; i++) {
       const month = addMonths(now, i);
-      const billsForMonth = futureBills
+      const billsForMonth = openBills
         .filter((b) =>
+          b.dueDate >= now &&
           b.dueDate.getFullYear() === month.getFullYear() &&
           b.dueDate.getMonth() === month.getMonth(),
         )
@@ -100,7 +101,7 @@ export class ForecastsService {
           amount: Number(s.amount),
           nextDue: s.nextDueDate,
         })),
-        ...futureBills.filter((b) => b.recurring).map((b) => ({
+        ...openBills.filter((b) => b.recurring).map((b) => ({
           name: b.name,
           amount: Number(b.amount),
           nextDue: b.dueDate,
