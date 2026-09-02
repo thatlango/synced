@@ -236,47 +236,140 @@ class HouseholdViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(LoadState<List<Household>>())
     val state = _state.asStateFlow()
+    private val _selectedId = MutableStateFlow<String?>(null)
+    val selectedId = _selectedId.asStateFlow()
     private val _invite = MutableStateFlow<Invite?>(null)
     val invite = _invite.asStateFlow()
     private val _analytics = MutableStateFlow(LoadState<HouseholdAnalytics>())
     val analytics = _analytics.asStateFlow()
+    private val _activity = MutableStateFlow(LoadState<List<Transaction>>())
+    val activity = _activity.asStateFlow()
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError = _actionError.asStateFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
-        _state.value = LoadState(loading = true)
+        val previousSelection = _selectedId.value
+        _state.value = LoadState(loading = true, data = _state.value.data)
         runCatching { repo.households() }
             .onSuccess { households ->
                 _state.value = LoadState(data = households)
-                households.firstOrNull()?.id?.let { loadAnalytics(it) }
+                val selected = previousSelection
+                    ?.takeIf { current -> households.any { it.id == current } }
+                    ?: households.firstOrNull()?.id
+                _selectedId.value = selected
+                if (selected == null) {
+                    _analytics.value = LoadState()
+                    _activity.value = LoadState()
+                } else {
+                    loadSelected(selected)
+                }
             }
             .onFailure { _state.value = LoadState(error = it.message) }
     }
 
-    private suspend fun loadAnalytics(householdId: String) {
+    fun select(householdId: String) = viewModelScope.launch {
+        if (_state.value.data.orEmpty().none { it.id == householdId }) return@launch
+        _selectedId.value = householdId
+        loadSelected(householdId)
+    }
+
+    private suspend fun loadSelected(householdId: String) {
         _analytics.value = LoadState(loading = true)
+        _activity.value = LoadState(loading = true)
+
         runCatching { repo.householdAnalytics(householdId) }
             .onSuccess { _analytics.value = LoadState(data = it) }
             .onFailure { _analytics.value = LoadState(error = it.message) }
+
+        val walletId = _state.value.data
+            .orEmpty()
+            .firstOrNull { it.id == householdId }
+            ?.wallet
+            ?.id
+
+        if (walletId == null) {
+            _activity.value = LoadState(error = "Shared wallet unavailable")
+        } else {
+            runCatching { repo.sharedTransactions(walletId) }
+                .onSuccess { _activity.value = LoadState(data = it) }
+                .onFailure { _activity.value = LoadState(error = it.message) }
+        }
     }
 
-    fun create(name: String) = viewModelScope.launch {
-        runCatching { repo.createHousehold(name) }
-        refresh()
+    fun create(name: String, done: (Result<Household>) -> Unit = {}) = viewModelScope.launch {
+        _actionError.value = null
+        val result = runCatching { repo.createHousehold(name.trim()) }
+        result.onFailure { _actionError.value = it.message }
+        done(result)
+        if (result.isSuccess) {
+            _selectedId.value = result.getOrNull()?.id
+            refresh()
+        }
     }
 
-    fun join(code: String, done: (Result<Household>) -> Unit) = viewModelScope.launch {
-        val result = runCatching { repo.joinHousehold(code) }
+    fun joinInvite(code: String, done: (Result<RedeemInviteResult>) -> Unit) = viewModelScope.launch {
+        _actionError.value = null
+        val result = runCatching { repo.redeemInvite(code) }
+        result.onFailure { _actionError.value = it.message }
+        done(result)
+        if (result.isSuccess && result.getOrNull()?.targetType == "household") {
+            _selectedId.value = result.getOrNull()?.householdId
+            refresh()
+        }
+    }
+
+    fun addSharedTransaction(
+        type: String,
+        amount: Double,
+        category: String,
+        description: String?,
+        merchant: String?,
+        done: (Result<Transaction>) -> Unit,
+    ) = viewModelScope.launch {
+        _actionError.value = null
+        val selected = _selectedId.value
+        val household = _state.value.data.orEmpty().firstOrNull { it.id == selected }
+        val walletId = household?.wallet?.id
+        if (walletId == null) {
+            val error = Result.failure<Transaction>(IllegalStateException("Shared wallet unavailable"))
+            _actionError.value = error.exceptionOrNull()?.message
+            done(error)
+            return@launch
+        }
+
+        val result = runCatching {
+            repo.createTransaction(
+                CreateTransactionRequest(
+                    walletId = walletId,
+                    type = type,
+                    amount = amount,
+                    category = category,
+                    description = description,
+                    merchant = merchant,
+                    visibility = "household",
+                ),
+            )
+        }
+        result.onFailure { _actionError.value = it.message }
         done(result)
         if (result.isSuccess) refresh()
     }
 
     fun invite(householdId: String) = viewModelScope.launch {
-        _invite.value = runCatching { repo.createInvite("household", householdId) }.getOrNull()
+        _actionError.value = null
+        runCatching { repo.createInvite("household", householdId) }
+            .onSuccess { _invite.value = it }
+            .onFailure { _actionError.value = it.message }
     }
 
     fun clearInvite() {
         _invite.value = null
+    }
+
+    fun clearActionError() {
+        _actionError.value = null
     }
 }
 
