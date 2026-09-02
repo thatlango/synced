@@ -65,3 +65,32 @@ data class PersonalForecast(
     val projections: List<ForecastProjection> = emptyList(),
     val recurringExpenses: List<RecurringExpense> = emptyList(),
 )
+
+@Serializable
+data class SpendPeriod(
+    @Serializable(with = FlexibleDoubleSerializer::class) val total: Double = 0.0,
+    val change: Int = 0,
+    val trend: String = "stable",
+)
+
+@Serializable
+data class CategorySpend(
+    val category: String? = null,
+    @Serializable(with = FlexibleDoubleSerializer::class) val amount: Double = 0.0,
+    val percentage: Int = 0,
+)
+
+@Serializable
+data class MerchantSpend(
+    val merchant: String? = null,
+    @Serializable(with = FlexibleDoubleSerializer::class) val amount: Double = 0.0,
+    val count: Int = 0,
+)
+
+@Serializable
+data class PersonalAnalytics(
+    val thisMonth: SpendPeriod = SpendPeriod(),
+    val lastMonth: SpendPeriod = SpendPeriod(),
+    val byCategory: List<CategorySpend> = emptyList(),
+    val topMerchants: List<MerchantSpend> = emptyList(),
+)
