@@ -10,15 +10,22 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.tukutuku.synced.ui.components.SyncedCard
 import com.tukutuku.synced.ui.theme.*
 import com.tukutuku.synced.worker.SmsSyncWorker
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SmsSyncScreen(onBack: () -> Unit) {
@@ -28,7 +35,29 @@ fun SmsSyncScreen(onBack: () -> Unit) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED,
         )
     }
-    var backgroundSync by remember { mutableStateOf(false) }
+    var backgroundSync by remember { mutableStateOf(SmsSyncWorker.isBackgroundEnabled(context)) }
+    var workId by rememberSaveable { mutableStateOf<String?>(null) }
+    val workInfo by produceState<WorkInfo?>(initialValue = null, key1 = workId) {
+        val id = workId?.let(UUID::fromString) ?: return@produceState
+        val workManager = WorkManager.getInstance(context)
+        while (true) {
+            val info = withContext(Dispatchers.IO) { workManager.getWorkInfoById(id).get() }
+            value = info
+            if (
+                info == null ||
+                info.state == WorkInfo.State.SUCCEEDED ||
+                info.state == WorkInfo.State.FAILED ||
+                info.state == WorkInfo.State.CANCELLED
+            ) {
+                break
+            }
+            delay(400)
+        }
+    }
+    val syncing = workInfo?.state == WorkInfo.State.ENQUEUED ||
+        workInfo?.state == WorkInfo.State.RUNNING ||
+        workInfo?.state == WorkInfo.State.BLOCKED
+
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         granted = it
     }
@@ -41,7 +70,7 @@ fun SmsSyncScreen(onBack: () -> Unit) {
         Icon(Icons.Outlined.Sms, contentDescription = null, tint = Secondary, modifier = Modifier.size(42.dp))
         Text("SMS transaction sync", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "Synced reads eligible mobile-money messages on your device, parses them locally and sends only structured transaction candidates. Raw SMS text is not uploaded.",
+            "Synced reads eligible financial alerts on your device, parses them locally and sends only structured transaction candidates. Raw SMS text is not uploaded.",
             color = Muted,
         )
         SyncedCard {
@@ -63,9 +92,14 @@ fun SmsSyncScreen(onBack: () -> Unit) {
             ) { Text("Allow SMS access") }
         } else {
             Button(
-                onClick = { SmsSyncWorker.runNow(context) },
+                onClick = { workId = SmsSyncWorker.runNow(context).toString() },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sync eligible messages now") }
+                enabled = !syncing,
+            ) {
+                Text(if (syncing) "Syncing…" else "Scan and sync recent messages")
+            }
+
+            SmsSyncResultCard(workInfo)
 
             SyncedCard {
                 Row(
@@ -75,7 +109,7 @@ fun SmsSyncScreen(onBack: () -> Unit) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("Background sync", fontWeight = FontWeight.Bold)
-                        Text("Check periodically when the phone is online.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        Text("Check new eligible messages periodically when the phone is online.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(
                         checked = backgroundSync,
@@ -87,5 +121,68 @@ fun SmsSyncScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SmsSyncResultCard(info: WorkInfo?) {
+    if (info == null) {
+        Text(
+            "Manual sync rescans up to the last 90 days, so messages missed by an older Synced parser can be recovered.",
+            color = Muted,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+
+    when (info.state) {
+        WorkInfo.State.ENQUEUED,
+        WorkInfo.State.RUNNING,
+        WorkInfo.State.BLOCKED,
+        -> SyncedCard(containerColor = PrimarySoft) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Text("Scanning financial alerts…", fontWeight = FontWeight.Bold, color = Ink)
+            Text("This can take a moment on phones with a large message history.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
+
+        WorkInfo.State.SUCCEEDED -> {
+            val scanned = info.outputData.getInt("scanned", 0)
+            val candidates = info.outputData.getInt("candidates", 0)
+            val processed = info.outputData.getInt("processed", 0)
+            val skipped = info.outputData.getInt("skipped", 0)
+            SyncedCard(containerColor = if (processed > 0) SuccessSoft else SurfaceAlt) {
+                Text(
+                    if (processed > 0) "SMS sync complete" else "No new transactions imported",
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Scanned $scanned messages • matched $candidates • imported $processed${if (skipped > 0) " • skipped $skipped" else ""}",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (scanned > 0 && candidates == 0) {
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        "Synced did not find a supported transaction alert in the scanned messages. It now recognises MTN MoMo, Airtel Money and common Ugandan bank debit/credit formats.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+
+        WorkInfo.State.FAILED -> SyncedCard(containerColor = ErrorSoft) {
+            Text("SMS sync could not finish", fontWeight = FontWeight.Bold, color = Ink)
+            Text(
+                info.outputData.getString("error") ?: "Check your connection and try again.",
+                color = Muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        WorkInfo.State.CANCELLED -> Text("SMS sync was cancelled.", color = Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
