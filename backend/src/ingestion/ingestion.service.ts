@@ -12,42 +12,236 @@ export interface ParsedSmsTransaction {
   source: 'mtn' | 'airtel' | 'sms';
 }
 
+// ─── Amount parser ─────────────────────────────────────────────────────────
 function parseAmount(raw: string): number {
   return parseFloat(raw.replace(/[,\s]/g, ''));
 }
 
+// ─── SMS patterns database ────────────────────────────────────────────────
 type SmsPattern = {
   regex: RegExp;
   extract: (m: RegExpMatchArray) => ParsedSmsTransaction;
 };
 
 const MTN_PATTERNS: SmsPattern[] = [
-  { regex: /You have received UGX\s*([\d,]+)\s*from\s+(.+?)\.\s*(?:Your new balance is UGX\s*([\d,]+))?/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'credit', description: `Received from ${m[2].trim()}`, merchant: m[2].trim(), source: 'mtn' }) },
-  { regex: /Your payment of UGX\s*([\d,]+)\s*to\s+(.+?)\s+has been completed/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Payment to ${m[2].trim()}`, merchant: m[2].trim(), source: 'mtn' }) },
-  { regex: /You have sent UGX\s*([\d,]+)\s*to\s+([\d\w\s]+?)\.\s*(?:Your new balance is UGX\s*([\d,]+))?/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Sent to ${m[2].trim()}`, merchant: m[2].trim(), source: 'mtn' }) },
-  { regex: /You have withdrawn UGX\s*([\d,]+)\s*(?:from\s+(.+?))?(?:\.|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: m[2] ? `Withdrawal from ${m[2].trim()}` : 'Cash withdrawal', source: 'mtn' }) },
-  { regex: /You have deposited UGX\s*([\d,]+)\s*(?:to\s+(.+?))?(?:\.|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'credit', description: m[2] ? `Deposit from ${m[2].trim()}` : 'Cash deposit', source: 'mtn' }) },
-  { regex: /MTN MoMo:\s*Payment of UGX\s*([\d,]+)\s*for\s+(.+?)\s+received/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Bill payment: ${m[2].trim()}`, merchant: m[2].trim(), source: 'mtn' }) },
-  { regex: /TxId:\s*(\w+)\s+UGX\s*([\d,]+)\s+sent to\s+(.+?)\s+on/i, extract: (m) => ({ amount: parseAmount(m[2]), type: 'debit', referenceId: m[1], description: `Sent to ${m[3].trim()}`, merchant: m[3].trim(), source: 'mtn' }) },
-  { regex: /You paid UGX\s*([\d,]+)\s*to\s+(.+?)(?:\.|,|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Paid to ${m[2].trim()}`, merchant: m[2].trim(), source: 'mtn' }) },
-  { regex: /Airtime purchase of UGX\s*([\d,]+)\s*for\s+([\d\w\s]+?)\s+was successful/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Airtime for ${m[2].trim()}`, merchant: 'MTN Airtime', source: 'mtn' }) },
+  // "You have received UGX 50,000 from John Doe."
+  {
+    regex: /You have received UGX\s*([\d,]+)\s*from\s+(.+?)\.\s*(?:Your new balance is UGX\s*([\d,]+))?/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'credit',
+      description: `Received from ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'mtn',
+    }),
+  },
+  // "Your payment of UGX 15,000 to Cafe Javas has been completed."
+  {
+    regex: /Your payment of UGX\s*([\d,]+)\s*to\s+(.+?)\s+has been completed/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Payment to ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'mtn',
+    }),
+  },
+  // "You have sent UGX 30,000 to 0777123456. Your new balance is UGX 120,000."
+  {
+    regex: /You have sent UGX\s*([\d,]+)\s*to\s+([\d\w\s]+?)\.\s*(?:Your new balance is UGX\s*([\d,]+))?/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Sent to ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'mtn',
+    }),
+  },
+  // "You have withdrawn UGX 100,000 from agent ..."
+  {
+    regex: /You have withdrawn UGX\s*([\d,]+)\s*(?:from\s+(.+?))?(?:\.|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: m[2] ? `Withdrawal from ${m[2].trim()}` : 'Cash withdrawal',
+      source: 'mtn',
+    }),
+  },
+  // "You have deposited UGX 200,000 ..."
+  {
+    regex: /You have deposited UGX\s*([\d,]+)\s*(?:to\s+(.+?))?(?:\.|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'credit',
+      description: m[2] ? `Deposit from ${m[2].trim()}` : 'Cash deposit',
+      source: 'mtn',
+    }),
+  },
+  // "MTN MoMo: Payment of UGX 45,000 for NWSC-00312 received."
+  {
+    regex: /MTN MoMo:\s*Payment of UGX\s*([\d,]+)\s*for\s+(.+?)\s+received/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Bill payment: ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'mtn',
+    }),
+  },
+  // "TxId:1234567890 UGX 50,000 sent to 0701234567 on 12/03/2024 ..."
+  {
+    regex: /TxId:\s*(\w+)\s+UGX\s*([\d,]+)\s+sent to\s+(.+?)\s+on/i,
+    extract: (m) => ({
+      amount: parseAmount(m[2]),
+      type: 'debit',
+      referenceId: m[1],
+      description: `Sent to ${m[3].trim()}`,
+      merchant: m[3].trim(),
+      source: 'mtn',
+    }),
+  },
+  // "Balance: UGX 850,000. You paid UGX 12,000 to ..."
+  {
+    regex: /You paid UGX\s*([\d,]+)\s*to\s+(.+?)(?:\.|,|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Paid to ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'mtn',
+    }),
+  },
+  // "Airtime purchase of UGX 5,000 for 0771234567 was successful"
+  {
+    regex: /Airtime purchase of UGX\s*([\d,]+)\s*for\s+([\d\w\s]+?)\s+was successful/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Airtime for ${m[2].trim()}`,
+      merchant: 'MTN Airtime',
+      source: 'mtn',
+    }),
+  },
 ];
 
 const AIRTEL_PATTERNS: SmsPattern[] = [
-  { regex: /You have sent UGX\s*([\d,]+)\s*to\s+(.+?)\.\s*(?:Your new balance is UGX\s*([\d,]+))?/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Sent to ${m[2].trim()}`, merchant: m[2].trim(), source: 'airtel' }) },
-  { regex: /Airtel Money:\s*You have received UGX\s*([\d,]+)\s*from\s+(.+?)(?:\.|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'credit', description: `Received from ${m[2].trim()}`, merchant: m[2].trim(), source: 'airtel' }) },
-  { regex: /Airtel Money payment of UGX\s*([\d,]+)\s*to\s+(.+?)\s+was successful/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Payment to ${m[2].trim()}`, merchant: m[2].trim(), source: 'airtel' }) },
-  { regex: /Cash withdrawn UGX\s*([\d,]+)\s*(?:from\s+(.+?))?(?:\.|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: m[2] ? `Withdrawal from ${m[2].trim()}` : 'Cash withdrawal', source: 'airtel' }) },
-  { regex: /UGX\s*([\d,]+)\s*(?:data )?bundle (?:purchase |)(?:activated|purchased|bought) successfully/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: 'Data bundle purchase', merchant: 'Airtel Uganda', source: 'airtel' }) },
+  // "You have sent UGX 20,000 to John Doe."
+  {
+    regex: /You have sent UGX\s*([\d,]+)\s*to\s+(.+?)\.\s*(?:Your new balance is UGX\s*([\d,]+))?/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Sent to ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'airtel',
+    }),
+  },
+  // "Airtel Money: You have received UGX 80,000 from ..."
+  {
+    regex: /Airtel Money:\s*You have received UGX\s*([\d,]+)\s*from\s+(.+?)(?:\.|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'credit',
+      description: `Received from ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'airtel',
+    }),
+  },
+  // "Your Airtel Money payment of UGX 15,000 to Kampala Java House was successful"
+  {
+    regex: /Airtel Money payment of UGX\s*([\d,]+)\s*to\s+(.+?)\s+was successful/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Payment to ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'airtel',
+    }),
+  },
+  // "Airtel: Cash withdrawn UGX 50,000 from agent ..."
+  {
+    regex: /Cash withdrawn UGX\s*([\d,]+)\s*(?:from\s+(.+?))?(?:\.|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: m[2] ? `Withdrawal from ${m[2].trim()}` : 'Cash withdrawal',
+      source: 'airtel',
+    }),
+  },
+  // "Bundle purchase: UGX 10,000 data bundle activated successfully"
+  {
+    regex: /UGX\s*([\d,]+)\s*(?:data )?bundle (?:purchase |)(?:activated|purchased|bought) successfully/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: 'Data bundle purchase',
+      merchant: 'Airtel Uganda',
+      source: 'airtel',
+    }),
+  },
 ];
 
+// Generic Ugandan bank / MoMo patterns
 const GENERIC_PATTERNS: SmsPattern[] = [
-  { regex: /(?:Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)\s+Bank:?\s+UGX\s*([\d,]+)\s+credited/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'credit', description: 'Bank credit', source: 'sms' }) },
-  { regex: /(?:Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)\s+Bank:?\s+UGX\s*([\d,]+)\s+debited/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: 'Bank debit', source: 'sms' }) },
-  { regex: /UGX\s*([\d,]+)\s+paid to\s+(.+?)(?:\.|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: `Paid to ${m[2].trim()}`, merchant: m[2].trim(), source: 'sms' }) },
-  { regex: /UGX\s*([\d,]+)\s+received from\s+(.+?)(?:\.|$)/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'credit', description: `Received from ${m[2].trim()}`, source: 'sms' }) },
-  { regex: /Ug(?:\.|andan)?\s+Shs\.?\s*([\d,]+)\s+has been credited/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'credit', description: 'Credit received', source: 'sms' }) },
-  { regex: /Ug(?:\.|andan)?\s+Shs\.?\s*([\d,]+)\s+has been debited/i, extract: (m) => ({ amount: parseAmount(m[1]), type: 'debit', description: 'Debit processed', source: 'sms' }) },
+  // "Stanbic Bank: UGX 500,000 credited to your account ending 1234"
+  {
+    regex: /(?:Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)\s+Bank:?\s+UGX\s*([\d,]+)\s+credited/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'credit',
+      description: 'Bank credit',
+      source: 'sms',
+    }),
+  },
+  // "Stanbic Bank: UGX 200,000 debited from your account"
+  {
+    regex: /(?:Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)\s+Bank:?\s+UGX\s*([\d,]+)\s+debited/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: 'Bank debit',
+      source: 'sms',
+    }),
+  },
+  // Generic: "UGX 15,000 paid to/received from ..."
+  {
+    regex: /UGX\s*([\d,]+)\s+paid to\s+(.+?)(?:\.|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: `Paid to ${m[2].trim()}`,
+      merchant: m[2].trim(),
+      source: 'sms',
+    }),
+  },
+  {
+    regex: /UGX\s*([\d,]+)\s+received from\s+(.+?)(?:\.|$)/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'credit',
+      description: `Received from ${m[2].trim()}`,
+      source: 'sms',
+    }),
+  },
+  // "Ug Shs 50,000 has been credited" (some banks use "Ug Shs")
+  {
+    regex: /Ug(?:\.|andan)?\s+Shs\.?\s*([\d,]+)\s+has been credited/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'credit',
+      description: 'Credit received',
+      source: 'sms',
+    }),
+  },
+  {
+    regex: /Ug(?:\.|andan)?\s+Shs\.?\s*([\d,]+)\s+has been debited/i,
+    extract: (m) => ({
+      amount: parseAmount(m[1]),
+      type: 'debit',
+      description: 'Debit processed',
+      source: 'sms',
+    }),
+  },
 ];
 
 const ALL_PATTERNS = [...MTN_PATTERNS, ...AIRTEL_PATTERNS, ...GENERIC_PATTERNS];
@@ -61,111 +255,283 @@ const NON_TRANSACTION_SMS_PATTERNS = [
   /\b(?:failed|declined|unsuccessful|cancelled|canceled|reversal pending)\b/i,
 ];
 
-const LEGACY_FALSE_SMS_DESCRIPTIONS = ['payment prompt','payment request','request to pay','bill reminder','invoice reminder','transaction pending','payment pending','debit reminder','credit reminder','enter your pin','verification code','one-time password','amount due'];
+const LEGACY_FALSE_SMS_DESCRIPTIONS = [
+  'payment prompt',
+  'payment request',
+  'request to pay',
+  'bill reminder',
+  'invoice reminder',
+  'transaction pending',
+  'payment pending',
+  'debit reminder',
+  'credit reminder',
+  'enter your pin',
+  'verification code',
+  'one-time password',
+  'amount due',
+];
 
 @Injectable()
 export class IngestionService {
   private readonly logger = new Logger(IngestionService.name);
-  constructor(private prisma: PrismaService, private categorization: CategorizationService, private transactions: TransactionsService) {}
+
+  constructor(
+    private prisma: PrismaService,
+    private categorization: CategorizationService,
+    private transactions: TransactionsService,
+  ) {}
+
+  // ─── SMS Parsing ──────────────────────────────────────────────
 
   parseSms(smsBody: string): ParsedSmsTransaction | null {
     if (!smsBody?.trim() || NON_TRANSACTION_SMS_PATTERNS.some((pattern) => pattern.test(smsBody))) return null;
     for (const pattern of ALL_PATTERNS) {
       const match = smsBody.match(pattern.regex);
       if (match) {
-        try { const result = pattern.extract(match); if (result.amount > 0) return result; } catch {}
+        try {
+          const result = pattern.extract(match);
+          if (result.amount > 0) return result;
+        } catch {
+          // continue to next pattern
+        }
       }
     }
     return null;
   }
 
-  parseBulkSms(smsBodies: string[]) { return smsBodies.map((smsBody) => ({ smsBody, parsed: this.parseSms(smsBody) })); }
+  // Parse multiple SMS bodies at once; returns results for each
+  parseBulkSms(smsBodies: string[]): Array<{ smsBody: string; parsed: ParsedSmsTransaction | null }> {
+    return smsBodies.map((smsBody) => ({
+      smsBody,
+      parsed: this.parseSms(smsBody),
+    }));
+  }
 
   async ingestSms(userId: string, walletId: string, smsBody: string) {
     const parsed = this.parseSms(smsBody);
-    if (!parsed) return { parsed: false, message: 'Could not parse SMS transaction' };
+    if (!parsed) {
+      this.logger.warn('Could not parse a financial SMS candidate; raw message text was not logged.');
+      return { parsed: false, message: 'Could not parse SMS transaction' };
+    }
+
     const category = this.categorization.categorize(parsed.description, parsed.merchant);
-    const transaction = await this.transactions.create(userId, { walletId, type: parsed.type, amount: parsed.amount, category, description: parsed.description, merchant: parsed.merchant, source: parsed.source });
+
+    const transaction = await this.transactions.create(userId, {
+      walletId,
+      type: parsed.type,
+      amount: parsed.amount,
+      category,
+      description: parsed.description,
+      merchant: parsed.merchant,
+      source: parsed.source,
+    });
+
     return { parsed: true, transaction };
   }
 
+  // Ingest multiple SMS messages in one call (mobile batch sync)
   async ingestBulkSms(userId: string, walletId: string, smsBodies: string[]) {
     const results: Array<{ smsBody: string; success: boolean; transaction?: any; reason?: string }> = [];
+
     for (const smsBody of smsBodies) {
       try {
         const result = await this.ingestSms(userId, walletId, smsBody);
-        results.push({ smsBody: smsBody.substring(0,60), success: result.parsed as boolean, transaction: (result as any).transaction, reason: !result.parsed ? result.message : undefined });
-      } catch (e) { results.push({ smsBody: smsBody.substring(0,60), success: false, reason: e.message }); }
+        results.push({
+          smsBody: smsBody.substring(0, 60),
+          success: result.parsed as boolean,
+          transaction: (result as any).transaction,
+          reason: !(result.parsed) ? result.message : undefined,
+        });
+      } catch (e) {
+        results.push({ smsBody: smsBody.substring(0, 60), success: false, reason: e.message });
+      }
     }
+
     const ingested = results.filter((r) => r.success).length;
+    this.logger.log(`Bulk SMS ingestion: ${ingested}/${smsBodies.length} parsed for user ${userId}`);
     return { total: smsBodies.length, ingested, skipped: smsBodies.length - ingested, results };
   }
 
-  async ingestCandidate(userId: string, walletId: string, candidate: ParsedSmsTransaction & { confidence?: number }) {
-    if (!candidate || !Number.isFinite(Number(candidate.amount)) || Number(candidate.amount) <= 0) return { accepted: false, reason: 'Invalid transaction amount' };
-    if (!['credit','debit'].includes(candidate.type)) return { accepted: false, reason: 'Invalid transaction type' };
-    if (!['mtn','airtel','sms'].includes(candidate.source)) return { accepted: false, reason: 'Invalid transaction source' };
-    const description = String(candidate.description || '').trim().slice(0,240);
-    const merchant = candidate.merchant ? String(candidate.merchant).trim().slice(0,160) : undefined;
-    const referenceId = candidate.referenceId ? String(candidate.referenceId).trim().slice(0,180) : undefined;
+
+  async ingestCandidate(
+    userId: string,
+    walletId: string,
+    candidate: ParsedSmsTransaction & { confidence?: number },
+  ) {
+    if (!candidate || !Number.isFinite(Number(candidate.amount)) || Number(candidate.amount) <= 0) {
+      return { accepted: false, reason: 'Invalid transaction amount' };
+    }
+    if (!['credit', 'debit'].includes(candidate.type)) {
+      return { accepted: false, reason: 'Invalid transaction type' };
+    }
+    if (!['mtn', 'airtel', 'sms'].includes(candidate.source)) {
+      return { accepted: false, reason: 'Invalid transaction source' };
+    }
+
+    const description = String(candidate.description || '').trim().slice(0, 240);
+    const merchant = candidate.merchant ? String(candidate.merchant).trim().slice(0, 160) : undefined;
+    const referenceId = candidate.referenceId
+      ? String(candidate.referenceId).trim().slice(0, 180)
+      : undefined;
     const category = this.categorization.categorize(description, merchant);
+
     try {
-      const transaction = await this.transactions.create(userId, { walletId, type: candidate.type, amount: Number(candidate.amount), category, description, merchant, source: candidate.source, referenceId });
+      const transaction = await this.transactions.create(userId, {
+        walletId,
+        type: candidate.type,
+        amount: Number(candidate.amount),
+        category,
+        description,
+        merchant,
+        source: candidate.source,
+        referenceId,
+      });
       return { accepted: true, transaction };
     } catch (error: any) {
-      if (error?.code === 'P2002' || String(error?.message || '').includes('Unique constraint')) return { accepted: false, duplicate: true, reason: 'Already imported' };
+      // A repeated local SMS fingerprint/reference is an idempotent duplicate,
+      // not a reason to repost or retain raw message content.
+      if (error?.code === 'P2002' || String(error?.message || '').includes('Unique constraint')) {
+        return { accepted: false, duplicate: true, reason: 'Already imported' };
+      }
       throw error;
     }
   }
 
   async reconcileSmsHistory(userId: string, walletId: string, referenceIds: string[]) {
-    const wallet = await this.prisma.wallet.findFirst({ where: { id: walletId, userId, type: 'personal' }, select: { id: true } });
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { id: walletId, userId, type: 'personal' },
+      select: { id: true },
+    });
     if (!wallet) throw new NotFoundException('Personal wallet not found or not available to this account');
-    const fingerprints = [...new Set((referenceIds || []).map((value) => String(value || '').trim().toLowerCase()).filter((value) => /^[a-f0-9]{64}$/.test(value)))].slice(0,2500);
+
+    const fingerprints = [...new Set((referenceIds || [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter((value) => /^[a-f0-9]{64}$/.test(value)))]
+      .slice(0, 2500);
+
     const candidates = await this.prisma.transaction.findMany({
-      where: { walletId, userId, source: { in: ['mtn','airtel','sms'] }, OR: [ ...(fingerprints.length ? [{ referenceId: { in: fingerprints } }] : []), ...LEGACY_FALSE_SMS_DESCRIPTIONS.map((phrase) => ({ description: { contains: phrase, mode: 'insensitive' as const } })) ] },
+      where: {
+        walletId,
+        userId,
+        source: { in: ['mtn', 'airtel', 'sms'] },
+        OR: [
+          ...(fingerprints.length ? [{ referenceId: { in: fingerprints } }] : []),
+          ...LEGACY_FALSE_SMS_DESCRIPTIONS.map((phrase) => ({
+            description: { contains: phrase, mode: 'insensitive' as const },
+          })),
+        ],
+      },
       select: { id: true, referenceId: true },
     });
+
     if (!candidates.length) {
-      const current = await this.prisma.wallet.findUnique({ where: { id: walletId } });
-      return { reviewed: fingerprints.length, removed: 0, walletBalance: Number(current?.balance || 0) };
+      return { reviewed: fingerprints.length, removed: 0, walletBalance: Number((await this.prisma.wallet.findUnique({ where: { id: walletId } }))?.balance || 0) };
     }
+
     const ids = candidates.map((row) => row.id);
     const walletBalance = await this.prisma.$transaction(async (tx) => {
       await tx.ledgerEntry.deleteMany({ where: { transactionId: { in: ids } } });
       await tx.transaction.deleteMany({ where: { id: { in: ids } } });
-      const remaining = await tx.ledgerEntry.findMany({ where: { walletId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, type: true, amount: true } });
+
+      const remaining = await tx.ledgerEntry.findMany({
+        where: { walletId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, type: true, amount: true },
+      });
+
       let runningBalance = 0;
       for (const entry of remaining) {
         const balanceBefore = runningBalance;
         runningBalance += entry.type === 'credit' ? Number(entry.amount) : -Number(entry.amount);
-        await tx.ledgerEntry.update({ where: { id: entry.id }, data: { balanceBefore, balanceAfter: runningBalance } });
+        await tx.ledgerEntry.update({
+          where: { id: entry.id },
+          data: { balanceBefore, balanceAfter: runningBalance },
+        });
       }
+
       await tx.wallet.update({ where: { id: walletId }, data: { balance: runningBalance } });
       return runningBalance;
     });
+
     this.logger.log(`SMS history repair removed ${ids.length} false/imported transfer row(s), user=${userId}`);
     return { reviewed: fingerprints.length, removed: ids.length, walletBalance };
   }
 
-  async ingestCandidateBulk(userId: string, walletId: string, candidates: Array<ParsedSmsTransaction & { confidence?: number }>) {
-    const capped = candidates.slice(0,500); const results = [];
-    for (const candidate of capped) { try { results.push(await this.ingestCandidate(userId,walletId,candidate)); } catch (error: any) { results.push({ accepted: false, reason: error instanceof Error ? error.message : 'Import failed' }); } }
-    const ingested = results.filter((r:any) => r.accepted).length; const duplicates = results.filter((r:any) => r.duplicate).length;
+  async ingestCandidateBulk(
+    userId: string,
+    walletId: string,
+    candidates: Array<ParsedSmsTransaction & { confidence?: number }>,
+  ) {
+    const capped = candidates.slice(0, 500);
+    const results = [];
+    for (const candidate of capped) {
+      try {
+        results.push(await this.ingestCandidate(userId, walletId, candidate));
+      } catch (error: any) {
+        results.push({ accepted: false, reason: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    const ingested = results.filter((r: any) => r.accepted).length;
+    const duplicates = results.filter((r: any) => r.duplicate).length;
+    this.logger.log(`Structured SMS ingestion: ${ingested}/${capped.length} imported, ${duplicates} duplicate(s), user=${userId}`);
     return { total: capped.length, processed: ingested, ingested, duplicates, skipped: capped.length - ingested, results };
   }
 
+  // ─── Mock MoMo API ────────────────────────────────────────────
+
   async fetchMtnTransactions(userId: string, walletId: string) {
-    const mockTransactions = [{ amount: 50000, type: 'credit' as const, description: 'Received from Employer', source: 'mtn' as const }, { amount: 12000, type: 'debit' as const, description: 'Payment to Cafe Javas', merchant: 'Cafe Javas', source: 'mtn' as const }];
+    const mockTransactions = [
+      {
+        amount: 50000,
+        type: 'credit' as const,
+        description: 'Received from Employer',
+        source: 'mtn' as const,
+      },
+      {
+        amount: 12000,
+        type: 'debit' as const,
+        description: 'Payment to Cafe Javas',
+        merchant: 'Cafe Javas',
+        source: 'mtn' as const,
+      },
+    ];
+
     const results = [];
-    for (const tx of mockTransactions) { try { const category = this.categorization.categorize(tx.description,(tx as any).merchant); results.push(await this.transactions.create(userId,{walletId,...tx,category})); } catch (e) { this.logger.warn(`Failed to ingest MTN tx: ${e.message}`); } }
+    for (const tx of mockTransactions) {
+      try {
+        const category = this.categorization.categorize(tx.description, (tx as any).merchant);
+        const t = await this.transactions.create(userId, { walletId, ...tx, category });
+        results.push(t);
+      } catch (e) {
+        this.logger.warn(`Failed to ingest MTN tx: ${e.message}`);
+      }
+    }
+
     return { ingested: results.length, transactions: results };
   }
 
   async fetchAirtelTransactions(userId: string, walletId: string) {
-    const mockTransactions = [{ amount: 8000, type: 'debit' as const, description: 'Airtel bundle purchase', merchant: 'Airtel Uganda', source: 'airtel' as const, category: 'mobile_data' }];
+    const mockTransactions = [
+      {
+        amount: 8000,
+        type: 'debit' as const,
+        description: 'Airtel bundle purchase',
+        merchant: 'Airtel Uganda',
+        source: 'airtel' as const,
+        category: 'mobile_data',
+      },
+    ];
+
     const results = [];
-    for (const tx of mockTransactions) { try { results.push(await this.transactions.create(userId,{walletId,...tx})); } catch (e) { this.logger.warn(`Failed to ingest Airtel tx: ${e.message}`); } }
+    for (const tx of mockTransactions) {
+      try {
+        const t = await this.transactions.create(userId, { walletId, ...tx });
+        results.push(t);
+      } catch (e) {
+        this.logger.warn(`Failed to ingest Airtel tx: ${e.message}`);
+      }
+    }
+
     return { ingested: results.length, transactions: results };
   }
 }
