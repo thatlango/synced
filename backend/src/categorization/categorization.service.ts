@@ -18,183 +18,192 @@ type Category =
   | 'bill_payment'
   | 'other';
 
-// Order matters — more specific rules first
-const CATEGORY_RULES: Array<{ patterns: RegExp[]; category: Category }> = [
-  // ── Salary / Income ───────────────────────────────────────────────────────
+type CategoryRule = {
+  patterns: RegExp[];
+  category: Category;
+};
+
+// Order is intentional. Specific income and bill semantics must win before
+// generic MoMo / transfer language such as "received from" or "payment to".
+const CATEGORY_RULES: CategoryRule[] = [
+  // ── Income semantics ──────────────────────────────────────────────────────
   {
     patterns: [
       /\bsalary\b|\bpayroll\b|\bwage\b|\bpay slip\b/i,
-      /\bincome\b.*\breceived\b|\bemployer\b.*\bpaid\b/i,
-      /\bmonthly pay\b|\bnet pay\b|\bbasic salary\b/i,
+      /\bmonthly pay\b|\bnet pay\b|\bbasic salary\b|\bemployer payment\b/i,
+      /\bsalary income received\b/i,
     ],
     category: 'salary',
   },
-
-  // ── School Fees ───────────────────────────────────────────────────────────
   {
+    // Refunds/reversals are cash inflows but not earned income. Keep them out
+    // of salary while still separating them from ordinary spending.
     patterns: [
-      /\bschool fees?\b|\btuition\b|\bterm fees?\b/i,
-      /\buniversity\b|\bcollege\b|\beducation fees?\b/i,
-      /\bmak\b|\bubiquitous\b|\bmubs\b|\bucu\b|\bnkumba\b|\bkampala international\b/i,
-      /\bmakerere\b|\bkiu\b|\buganda christian university\b/i,
-      /\blearning.*fees?\b|\bacademic.*fees?\b|\bexam fees?\b/i,
+      /\brefund(?:ed)?\b|\breversal\b|\breversed\b|\bcashback\b|\bchargeback\b/i,
     ],
-    category: 'school_fees',
+    category: 'transfer',
   },
-
-  // ── Utilities ─────────────────────────────────────────────────────────────
   {
     patterns: [
-      /\bnwsc\b|\bwater.*bill\b|\bwater.*payment\b/i,
-      /\buedcl\b|\bumeme\b|\byaka\b|\belectricity\b|\bpower.*bill\b/i,
-      /\bgas.*bill\b|\butility\b|\bwayleave\b/i,
-      /\binternet.*bill\b|\bfibre\b|\bstarlink\b|\bliquid telecom\b|\butande\b/i,
-    ],
-    category: 'utilities',
-  },
-
-  // ── Fuel ─────────────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\bfuel\b|\bpetrol\b|\bdiesel\b/i,
-      /\btotal petrol\b|\bshell\b|\boilcom\b|\bgapco\b|\bnationaloc\b/i,
-      /\bpuma energy\b|\bbp\b.*\buganda\b|\bvivo energy\b/i,
-    ],
-    category: 'fuel',
-  },
-
-  // ── Mobile Data / Airtime ─────────────────────────────────────────────────
-  {
-    patterns: [
-      /\bairtime\b|\bdata bundle\b|\bbundle.*purchase\b|\binternet bundle\b/i,
-      /\bmtn.*data\b|\bairtel.*data\b|\bmtn.*bundle\b|\bairtel.*bundle\b/i,
-      /\bteleflex\b|\bairtel money.*bundle\b/i,
-      /\bdata top.?up\b|\bmobile data\b/i,
-    ],
-    category: 'mobile_data',
-  },
-
-  // ── Subscriptions ─────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\bnetflix\b|\bspotify\b|\byoutube premium\b|\bapple.*subscri/i,
-      /\bdstv\b|\bshowmax\b|\bcanal\+?\b|\bstarmax\b|\baztec\b/i,
-      /\bgym.*membership\b|\bfitness.*membership\b|\bclub.*membership\b/i,
-      /\bsubscription\b|\bmonthly.*fee\b|\bannual.*fee\b/i,
-    ],
-    category: 'subscriptions',
-  },
-
-  // ── Rent ─────────────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\brent\b|\brental\b|\blandlord\b|\bhouse.*payment\b|\bapartment\b/i,
-      /\bhousing\b|\baccommodation.*fee\b|\blodging\b/i,
-    ],
-    category: 'rent',
-  },
-
-  // ── Healthcare ────────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\bhospital\b|\bclinic\b|\bpharmacy\b|\bdoctor\b|\bmedical\b/i,
-      /\bmulago\b|\bcase.*clinic\b|\bnorvik\b|\bmengo hospital\b|\bisc\b/i,
-      /\bhealth.*insurance\b|\bnsf\b.*health|\bnhis\b/i,
-      /\bdental\b|\boptical\b|\blaboratory\b|\bsurgery\b|\btherapy\b/i,
-      /\bmedicine\b|\bdrugs\b|\bprescription\b/i,
-    ],
-    category: 'healthcare',
-  },
-
-  // ── Food & Dining ─────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\brestaurant\b|\bcafe\b|\bcanteen\b|\bfood court\b|\bfast food\b/i,
-      /\bcafe java\b|\bjava house\b|\bchicken tonight\b|\bfork\b.*\bknife\b/i,
-      /\bnandos\b|\bkfc\b|\bmr biggs\b|\bsubway\b|\bsteers\b|\bdominos\b/i,
-      /\bpizza\b|\bburger\b|\bwings\b|\bfries\b|\bchips\b/i,
-      /\bsupermarket\b|\bmarket\b|\bgrocery\b|\bgreen.*grocery\b/i,
-      /\bnakumatt\b|\bcarrefour\b|\bshoprite\b|\bgame stores\b|\bnakifuma\b/i,
-      /\bmatooke\b|\bugali\b|\bposho\b|\bkatogo\b|\brollex\b/i,
-      /\beat\b.*\bpaid\b|\blunch\b|\bdinner\b|\bbreakfast\b|\bsnack\b/i,
-    ],
-    category: 'food',
-  },
-
-  // ── Transport ─────────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\buber\b|\bbolt\b|\blittle cab\b|\bsafeboda\b|\byango\b/i,
-      /\bboda\b|\btaxi\b|\bmatatu\b|\bbus fare\b|\bstage\b/i,
-      /\bflight\b|\bairline\b|\bticket\b.*\bairport\b|\bentebbe express\b/i,
-      /\btransport\b.*\bfee\b|\bfare\b|\bride\b.*\bpaid\b|\btrip\b.*\bpaid\b/i,
-      /\bpassenger.*transport\b|\bcoach\b|\bgaagaa\b|\bpost bus\b/i,
-    ],
-    category: 'transport',
-  },
-
-  // ── Entertainment ─────────────────────────────────────────────────────────
-  {
-    patterns: [
-      /\bmovie\b|\bcinema\b|\bfilm\b|\bgarden city.*cinema\b/i,
-      /\bconcert\b|\bevent ticket\b|\bticket.*show\b/i,
-      /\bgame.*fee\b|\bsport.*club\b|\bgym\b|\bfitness\b|\bswimming\b/i,
-      /\brecreation\b|\bamusement\b|\bpark.*entry\b|\bzoo\b/i,
-      /\bbar\b|\bclub\b|\bnightlife\b|\bdrinks\b.*\bpaid\b/i,
-    ],
-    category: 'entertainment',
-  },
-
-  // ── Savings / Investment ──────────────────────────────────────────────────
-  {
-    patterns: [
-      /\bsaving\b|\bsave\b|\bfixed deposit\b|\binvestment\b|\binvest\b/i,
-      /\bsacco\b|\bchama\b|\bmerry.?go.?round\b/i,
-      /\bnssf\b|\bpension\b|\bunit trust\b|\bmutual fund\b|\bstockbroker\b/i,
+      /\binterest (?:income|credited|earned|received)\b|\bdividend\b/i,
+      /\binvestment (?:return|income|proceeds)\b/i,
     ],
     category: 'savings',
   },
-
-  // ── Shopping ─────────────────────────────────────────────────────────────
   {
+    // These are useful income/inflow types in the SMS description even though
+    // the current canonical category enum groups them under transfer.
     patterns: [
-      /\bshop\b|\bstore\b|\bmall\b|\bmarket.*payment\b/i,
-      /\bclothes\b|\bfashion\b|\bshoes\b|\baccessory\b|\bjewelry\b/i,
-      /\bwoolworths\b|\bgame store\b|\bkikomera\b|\bequatorial mall\b/i,
-      /\bonline shop\b|\bjumia\b|\bkilimall\b|\bamazon\b/i,
-      /\belectronics\b|\bphone.*purchase\b|\blaptop\b|\bcomputer.*shop\b/i,
-    ],
-    category: 'shopping',
-  },
-
-  // ── Transfer (MoMo generic) ──────────────────────────────────────────────
-  {
-    patterns: [
-      /\btransfer\b|\bsend money\b|\bmobile money\b|\bmomo\b/i,
-      /\bairtel money\b|\bmtn momo\b|\bsent to\b|\breceived from\b/i,
+      /\bbusiness income received\b|\bclient payment\b|\bcustomer payment\b/i,
+      /\bsales revenue\b|\bsales proceeds\b|\binvoice payment\b|\bmerchant settlement\b/i,
+      /\bfreelance (?:or consulting )?income\b|\bconsulting income\b|\bconsultancy payment\b/i,
+      /\bprofessional fee\b|\bgig payment\b/i,
+      /\bgift,? grant or allowance received\b|\bgift income\b|\bgrant received\b|\ballowance received\b/i,
+      /\bloan proceeds received\b|\bloan disbursement\b|\bloan credited\b/i,
+      /\bcash deposit received\b|\bcash[ -]?in\b/i,
     ],
     category: 'transfer',
   },
 
-  // ── Bill Payment ─────────────────────────────────────────────────────────
+  // ── Bill types ────────────────────────────────────────────────────────────
   {
     patterns: [
+      /\bnwsc\b|\bwater bill\b|\bwater payment\b|\bwater utility\b/i,
+      /\buedcl\b|\bumeme\b|\byaka\b|\belectricity\b|\bpower bill\b|\bpower token\b/i,
+      /\binternet bill\b|\bfibre\b|\bfiber\b|\bstarlink\b|\bliquid telecom\b|\butande\b|\bwifi bill\b/i,
+      /\bgas bill\b|\butility bill\b/i,
+    ],
+    category: 'utilities',
+  },
+  {
+    patterns: [
+      /\bairtime\b|\bdata bundle\b|\binternet bundle\b|\bmobile data\b/i,
+      /\bbundle purchase\b|\bdata top.?up\b|\bvoice top.?up\b|\brecharge\b/i,
+      /\bmtn.*(?:data|bundle)\b|\bairtel.*(?:data|bundle)\b/i,
+    ],
+    category: 'mobile_data',
+  },
+  {
+    patterns: [
+      /\brent\b|\brental\b|\blandlord\b|\bhousing payment\b|\bapartment payment\b/i,
+      /\baccommodation fee\b|\blodging\b/i,
+    ],
+    category: 'rent',
+  },
+  {
+    patterns: [
+      /\bschool fees?\b|\btuition\b|\bterm fees?\b|\beducation fees?\b/i,
+      /\buniversity fees?\b|\bcollege fees?\b|\bacademic fees?\b|\bexam fees?\b/i,
+      /\bmakerere\b|\bmubs\b|\bucu\b|\bkiu\b|\buganda christian university\b/i,
+    ],
+    category: 'school_fees',
+  },
+  {
+    patterns: [
+      /\bnetflix\b|\bspotify\b|\byoutube premium\b|\bapple.*subscri/i,
+      /\bdstv\b|\bshowmax\b|\bcanal\+?\b/i,
+      /\bsubscription\b|\brenewal\b|\bmonthly fee\b|\bannual fee\b/i,
+      /\bgym membership\b|\bfitness membership\b|\bclub membership\b/i,
+    ],
+    category: 'subscriptions',
+  },
+  {
+    // The existing schema intentionally has a generic bill_payment category.
+    // Preserve the specific bill type in the normalized description while
+    // routing loan, insurance and statutory obligations into that category.
+    patterns: [
+      /\bloan repayment\b|\bloan instalment\b|\bloan installment\b/i,
+      /\bcredit repayment\b|\bmicrofinance repayment\b/i,
+      /\binsurance premium\b|\bpremium payment\b|\bpolicy premium\b/i,
+      /\btax or statutory fee\b|\btax payment\b|\bgovernment fee\b|\blicen[cs]e fee\b/i,
+      /\bura\b|\bstatutory fee\b/i,
       /\bbill payment\b|\bpay.*bill\b|\binvoice.*paid\b/i,
     ],
     category: 'bill_payment',
+  },
+
+  // ── Everyday spending ─────────────────────────────────────────────────────
+  {
+    patterns: [
+      /\bfuel\b|\bpetrol\b|\bdiesel\b/i,
+      /\bshell\b|\btotalenergies\b|\btotal petrol\b|\boilcom\b|\bgapco\b/i,
+      /\bpuma energy\b|\bvivo energy\b/i,
+    ],
+    category: 'fuel',
+  },
+  {
+    patterns: [
+      /\bhospital\b|\bclinic\b|\bpharmacy\b|\bdoctor\b|\bmedical\b/i,
+      /\bmulago\b|\bnorvik\b|\bmengo hospital\b/i,
+      /\bhealth insurance\b|\bdental\b|\boptical\b|\blaboratory\b|\bsurgery\b|\btherapy\b/i,
+      /\bmedicine\b|\bprescription\b/i,
+    ],
+    category: 'healthcare',
+  },
+  {
+    patterns: [
+      /\brestaurant\b|\bcafe\b|\bcanteen\b|\bfood court\b|\bfast food\b/i,
+      /\bcafe javas?\b|\bjava house\b|\bkfc\b|\bnandos\b|\bdominos\b/i,
+      /\bpizza\b|\bburger\b|\blunch\b|\bdinner\b|\bbreakfast\b|\bsnack\b/i,
+      /\bsupermarket\b|\bgrocery\b|\bcarrefour\b|\bshoprite\b/i,
+      /\bfood or grocery payment\b/i,
+    ],
+    category: 'food',
+  },
+  {
+    patterns: [
+      /\buber\b|\bbolt\b|\blittle cab\b|\bsafeboda\b|\byango\b/i,
+      /\bboda\b|\btaxi\b|\bmatatu\b|\bbus fare\b|\btransport fare\b/i,
+      /\bflight\b|\bairline\b|\bairport\b|\bcoach\b|\bpost bus\b/i,
+      /\btransport payment\b/i,
+    ],
+    category: 'transport',
+  },
+  {
+    patterns: [
+      /\bmovie\b|\bcinema\b|\bconcert\b|\bevent ticket\b/i,
+      /\bsport club\b|\bgym\b|\bfitness\b|\bswimming\b|\brecreation\b/i,
+      /\bbar\b|\bnightlife\b/i,
+    ],
+    category: 'entertainment',
+  },
+  {
+    patterns: [
+      /\bsaving\b|\bfixed deposit\b|\binvestment\b|\binvest\b/i,
+      /\bsacco\b|\bchama\b|\bmerry.?go.?round\b/i,
+      /\bnssf\b|\bpension\b|\bunit trust\b|\bmutual fund\b/i,
+    ],
+    category: 'savings',
+  },
+  {
+    patterns: [
+      /\bshopping\b|\bshop\b|\bstore\b|\bmall\b/i,
+      /\bclothes\b|\bfashion\b|\bshoes\b|\baccessory\b|\bjewelry\b/i,
+      /\bjumia\b|\bkilimall\b|\bamazon\b/i,
+      /\belectronics\b|\bphone purchase\b|\blaptop\b|\bcomputer shop\b/i,
+    ],
+    category: 'shopping',
+  },
+
+  // ── Generic money movement fallback ───────────────────────────────────────
+  {
+    patterns: [
+      /\btransfer\b|\bsend money\b|\bmobile money\b|\bmomo\b/i,
+      /\bairtel money\b|\bmtn momo\b|\bsent to\b|\breceived from\b/i,
+      /\bmoney received by bank or mobile money\b|\bbank credit\b|\bcredit received\b/i,
+    ],
+    category: 'transfer',
   },
 ];
 
 @Injectable()
 export class CategorizationService {
   categorize(description: string, merchant?: string): Category {
-    const text = `${description || ''} ${merchant || ''}`;
+    const text = `${description || ''} ${merchant || ''}`.trim();
 
     for (const rule of CATEGORY_RULES) {
-      for (const pattern of rule.patterns) {
-        if (pattern.test(text)) {
-          return rule.category;
-        }
+      if (rule.patterns.some((pattern) => pattern.test(text))) {
+        return rule.category;
       }
     }
 
@@ -208,12 +217,11 @@ export class CategorizationService {
     }));
   }
 
-  // Used for previewing what category an SMS description will map to
   preview(description: string, merchant?: string): { category: Category; confidence: 'high' | 'low' } {
-    const cat = this.categorize(description, merchant);
+    const category = this.categorize(description, merchant);
     return {
-      category: cat,
-      confidence: cat !== 'other' ? 'high' : 'low',
+      category,
+      confidence: category !== 'other' ? 'high' : 'low',
     };
   }
 }
