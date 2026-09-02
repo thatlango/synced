@@ -37,10 +37,10 @@ export class InvitesService {
       }
     } else {
       if (!householdId) throw new BadRequestException('Shared-space id is required');
-      const hh = await this.prisma.householdMember.findUnique({
+      const membership = await this.prisma.householdMember.findUnique({
         where: { householdId_userId: { householdId, userId } },
       });
-      if (!hh || hh.role !== 'admin') {
+      if (!membership || membership.role !== 'admin') {
         throw new ForbiddenException('Only a shared-space admin can invite people.');
       }
     }
@@ -91,15 +91,16 @@ export class InvitesService {
 
   async redeem(userId: string, rawCode: string) {
     const code = rawCode.trim().toUpperCase();
+
     return this.prisma.$transaction(async (tx) => {
       const invite = await tx.invite.findUnique({ where: { code } });
       if (!invite) throw new NotFoundException('Invite not found');
       this.assertActive(invite);
 
-      const already = await tx.inviteRedemption.findUnique({
+      const priorRedemption = await tx.inviteRedemption.findUnique({
         where: { inviteId_userId: { inviteId: invite.id, userId } },
       });
-      if (already) {
+      if (priorRedemption) {
         return {
           joined: true,
           duplicate: true,
@@ -109,26 +110,55 @@ export class InvitesService {
         };
       }
 
+      // Existing members should not consume a finite invite use just by opening
+      // or redeeming a link that points back to a space they already belong to.
       if (invite.targetType === 'basket' && invite.basketId) {
-        const role = invite.role === 'viewer' ? 'viewer' : 'contributor';
-        await tx.basketMember.upsert({
+        const existing = await tx.basketMember.findUnique({
           where: { basketId_userId: { basketId: invite.basketId, userId } },
-          update: {},
-          create: { basketId: invite.basketId, userId, role },
+        });
+        const basket = await tx.basket.findUnique({ where: { id: invite.basketId } });
+        if (existing || basket?.createdBy === userId) {
+          return {
+            joined: true,
+            duplicate: true,
+            targetType: invite.targetType,
+            basketId: invite.basketId,
+            householdId: invite.householdId,
+          };
+        }
+
+        const role = invite.role === 'viewer' ? 'viewer' : 'contributor';
+        await tx.basketMember.create({
+          data: { basketId: invite.basketId, userId, role },
         });
       } else if (invite.householdId) {
-        await tx.householdMember.upsert({
+        const existing = await tx.householdMember.findUnique({
           where: { householdId_userId: { householdId: invite.householdId, userId } },
-          update: {},
-          create: { householdId: invite.householdId, userId, role: 'member' },
         });
+        if (existing) {
+          return {
+            joined: true,
+            duplicate: true,
+            targetType: invite.targetType,
+            basketId: invite.basketId,
+            householdId: invite.householdId,
+          };
+        }
+        await tx.householdMember.create({
+          data: { householdId: invite.householdId, userId, role: 'member' },
+        });
+      } else {
+        throw new BadRequestException('Invite target is unavailable');
       }
 
       await tx.inviteRedemption.create({ data: { inviteId: invite.id, userId } });
       const useCount = invite.useCount + 1;
       await tx.invite.update({
         where: { id: invite.id },
-        data: { useCount, status: useCount >= invite.maxUses ? 'exhausted' : 'active' },
+        data: {
+          useCount,
+          status: useCount >= invite.maxUses ? 'exhausted' : 'active',
+        },
       });
 
       return {
