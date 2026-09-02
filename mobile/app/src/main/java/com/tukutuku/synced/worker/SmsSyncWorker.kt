@@ -18,7 +18,7 @@ class SmsSyncWorker @AssistedInject constructor(@Assisted context: Context, @Ass
         val rescan = inputData.getBoolean(KEY_RESCAN,false); val now = System.currentTimeMillis(); val previousCheckpoint = sessions.smsLastTimestamp(); val since = if (rescan) now - RESCAN_DAYS * DAY_MS else previousCheckpoint.takeIf { it > 0 } ?: now - RESCAN_DAYS * DAY_MS
         return try {
             val scan = reader.scan(since, limit = if (rescan) 1500 else 400)
-            val repair = if (scan.cleanupReferenceIds.isNotEmpty()) repo.reconcileSmsHistory(wallet,scan.cleanupReferenceIds) else null
+            val repair = if (rescan || scan.cleanupReferenceIds.isNotEmpty()) repo.reconcileSmsHistory(wallet,scan.cleanupReferenceIds) else null
             val cleaned = repair?.removed ?: 0
             if (scan.candidates.isEmpty()) {
                 if (!rescan && scan.newestTimestamp > previousCheckpoint) sessions.setSmsLastTimestamp(scan.newestTimestamp)
