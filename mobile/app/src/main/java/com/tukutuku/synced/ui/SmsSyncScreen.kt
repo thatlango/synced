@@ -151,6 +151,7 @@ private fun SmsSyncResultCard(info: WorkInfo?) {
             val candidates = info.outputData.getInt("candidates", 0)
             val processed = info.outputData.getInt("processed", 0)
             val skipped = info.outputData.getInt("skipped", 0)
+            val internalTransfers = info.outputData.getInt("internalTransfers", 0)
             SyncedCard(containerColor = if (processed > 0) SuccessSoft else SurfaceAlt) {
                 Text(
                     if (processed > 0) "SMS sync complete" else "No new transactions imported",
@@ -159,14 +160,22 @@ private fun SmsSyncResultCard(info: WorkInfo?) {
                 )
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    "Scanned $scanned messages • matched $candidates • imported $processed${if (skipped > 0) " • skipped $skipped" else ""}",
+                    "Scanned $scanned messages • matched $candidates • imported $processed${if (skipped > 0) " • skipped $skipped" else ""}${if (internalTransfers > 0) " • reconciled $internalTransfers internal transfer${if (internalTransfers == 1) "" else "s"}" else ""}",
                     color = Muted,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                if (scanned > 0 && candidates == 0) {
+                if (scanned > 0 && candidates == 0 && internalTransfers == 0) {
                     Spacer(Modifier.height(7.dp))
                     Text(
-                        "Synced did not find a supported transaction alert in the scanned messages. It now recognises MTN MoMo, Airtel Money and common Ugandan bank debit/credit formats.",
+                        "Synced did not find a confirmed credit or debit in the scanned messages. Payment prompts, reminders, pending notices and other non-transaction messages are ignored.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (internalTransfers > 0) {
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        "Matched movements between your bank and mobile-money accounts were treated as internal transfers, not new income or spending.",
                         color = Muted,
                         style = MaterialTheme.typography.bodySmall,
                     )
