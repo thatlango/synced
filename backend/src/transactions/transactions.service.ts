@@ -27,8 +27,19 @@ export class TransactionsService {
     });
     if (!wallet) throw new NotFoundException('Wallet not found or not available to this account');
 
+    const timestampMarker = dto.description?.match(/\s*\[synced-ts:(\d{10,13})\]\s*$/);
+    const cleanDescription = dto.description
+      ?.replace(/\s*\[synced-ts:\d{10,13}\]\s*$/, '')
+      .trim();
+    const markerDate = timestampMarker ? new Date(Number(timestampMarker[1])) : null;
+    const occurredAt = dto.occurredAt
+      ? new Date(dto.occurredAt)
+      : markerDate && !Number.isNaN(markerDate.getTime())
+        ? markerDate
+        : new Date();
+
     const isHistoricalFinancialImport = Boolean(
-      dto.occurredAt && ['mtn', 'airtel', 'sms'].includes(dto.source || ''),
+      (dto.occurredAt || timestampMarker) && ['mtn', 'airtel', 'sms'].includes(dto.source || ''),
     );
     if (dto.type === 'debit' && Number(wallet.balance) < dto.amount && !isHistoricalFinancialImport) {
       throw new BadRequestException('Insufficient wallet balance');
@@ -36,9 +47,8 @@ export class TransactionsService {
 
     const category =
       dto.category ||
-      this.categorization.categorize(dto.description || '', dto.merchant);
+      this.categorization.categorize(cleanDescription || '', dto.merchant);
 
-    const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
     const balanceBefore = Number(wallet.balance);
     const balanceAfter =
       dto.type === 'credit'
@@ -53,7 +63,7 @@ export class TransactionsService {
           type: dto.type as any,
           amount: dto.amount,
           category: category as any,
-          description: dto.description,
+          description: cleanDescription,
           merchant: dto.merchant,
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
@@ -84,7 +94,7 @@ export class TransactionsService {
           category: category as any,
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
-          description: dto.description,
+          description: cleanDescription,
           referenceId: dto.referenceId || transaction.id,
           createdAt: occurredAt,
         },
