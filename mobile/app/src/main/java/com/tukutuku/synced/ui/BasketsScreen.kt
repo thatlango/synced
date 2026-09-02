@@ -1,5 +1,6 @@
 package com.tukutuku.synced.ui
 
+import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -119,9 +121,11 @@ fun BasketsScreen(
     }
 
     invite?.let {
+        val fallback = "synced://join?code=${it.code}"
         InviteDialog(
             code = it.code,
-            payload = it.qrPayload ?: it.joinUrl ?: "synced://join?code=${it.code}",
+            qrPayload = it.qrPayload ?: fallback,
+            shareUrl = it.joinUrl ?: it.qrPayload ?: fallback,
             onDismiss = vm::clearInvite,
         )
     }
@@ -185,20 +189,34 @@ private fun ContributionDialog(
 @Composable
 fun InviteDialog(
     code: String,
-    payload: String,
+    qrPayload: String,
+    shareUrl: String,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Invite ready") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                QrCode(payload, Modifier.size(190.dp))
+                QrCode(qrPayload, Modifier.size(190.dp))
                 Spacer(Modifier.height(10.dp))
                 Text(code, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-                Text("Scan the QR or share this code.", color = Muted)
+                Text("Scan the QR, share the link, or send this code.", color = Muted)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val message = "Join me on Synced. Open this invite: $shareUrl\nInvite code: $code"
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, message)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share Synced invite"))
+                },
+            ) { Text("Share invite") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
 }
