@@ -41,13 +41,45 @@ export class TransactionsService {
     const isHistoricalFinancialImport = Boolean(
       (dto.occurredAt || timestampMarker) && ['mtn', 'airtel', 'sms'].includes(dto.source || ''),
     );
-    if (dto.type === 'debit' && Number(wallet.balance) < dto.amount && !isHistoricalFinancialImport) {
-      throw new BadRequestException('Insufficient wallet balance');
-    }
-
     const category =
       dto.category ||
       this.categorization.categorize(cleanDescription || '', dto.merchant);
+
+    // A manual rescan keeps the same one-way SMS reference fingerprint. Older
+    // Synced builds imported those rows at sync time, so reconcile their original
+    // occurrence date instead of treating them as new money or rejecting them as
+    // duplicates. No wallet balance is changed in this path.
+    if (isHistoricalFinancialImport && dto.referenceId) {
+      const existing = await this.prisma.transaction.findUnique({
+        where: { referenceId: dto.referenceId },
+      });
+      if (existing && existing.userId === userId && existing.walletId === dto.walletId) {
+        return this.prisma.$transaction(async (tx) => {
+          const transaction = await tx.transaction.update({
+            where: { id: existing.id },
+            data: {
+              createdAt: occurredAt,
+              description: cleanDescription,
+              merchant: dto.merchant,
+              category: category as any,
+            },
+          });
+          await tx.ledgerEntry.updateMany({
+            where: { transactionId: existing.id },
+            data: {
+              createdAt: occurredAt,
+              description: cleanDescription,
+              category: category as any,
+            },
+          });
+          return transaction;
+        });
+      }
+    }
+
+    if (dto.type === 'debit' && Number(wallet.balance) < dto.amount && !isHistoricalFinancialImport) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
 
     const balanceBefore = Number(wallet.balance);
     const balanceAfter =
