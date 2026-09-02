@@ -20,6 +20,15 @@ export class BillsController {
     return this.billsService.create(userId, dto);
   }
 
+  @Post('discover-recurring')
+  @ApiOperation({ summary: 'Discover recurring payments and optionally auto-create high-confidence bills' })
+  discoverRecurring(
+    @CurrentUser('id') userId: string,
+    @Body() body: { autoCreate?: boolean } = {},
+  ) {
+    return this.billsService.discoverRecurring(userId, body.autoCreate === true);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get all bills' })
   @ApiQuery({ name: 'includePaid', required: false, type: Boolean })
