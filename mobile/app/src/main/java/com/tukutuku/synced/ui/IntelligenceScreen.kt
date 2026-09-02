@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoGraph
+import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -19,23 +20,58 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tukutuku.synced.app.BillsViewModel
 import com.tukutuku.synced.app.IntelligenceViewModel
 import com.tukutuku.synced.data.model.MonthlyTrend
 import com.tukutuku.synced.ui.components.*
 import com.tukutuku.synced.ui.theme.*
 import kotlin.math.max
 
+private data class ObligationDisplay(
+    val kind: String,
+    val name: String,
+    val category: String,
+    val amount: Double,
+    val dueDate: String,
+)
+
 @Composable
 fun IntelligenceScreen(
     onBack: () -> Unit,
     vm: IntelligenceViewModel = hiltViewModel(),
+    billsVm: BillsViewModel = hiltViewModel(),
 ) {
     val analytics by vm.analytics.collectAsStateWithLifecycle()
     val trends by vm.trends.collectAsStateWithLifecycle()
     val forecast by vm.forecast.collectAsStateWithLifecycle()
     val insight by vm.insight.collectAsStateWithLifecycle()
+    val upcoming by billsVm.state.collectAsStateWithLifecycle()
     val data = analytics.data
     val f = forecast.data
+    val obligations = buildList {
+        upcoming.data?.bills.orEmpty().forEach { bill ->
+            add(
+                ObligationDisplay(
+                    kind = "Bill",
+                    name = bill.name,
+                    category = bill.category,
+                    amount = bill.amount,
+                    dueDate = bill.dueDate,
+                ),
+            )
+        }
+        upcoming.data?.subscriptions.orEmpty().forEach { subscription ->
+            add(
+                ObligationDisplay(
+                    kind = "Subscription",
+                    name = subscription.name,
+                    category = subscription.category,
+                    amount = subscription.amount,
+                    dueDate = subscription.nextDueDate,
+                ),
+            )
+        }
+    }.sortedBy { it.dueDate }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -53,7 +89,7 @@ fun IntelligenceScreen(
             }
         }
 
-        if (analytics.loading || forecast.loading) {
+        if (analytics.loading || forecast.loading || upcoming.loading) {
             item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         }
 
@@ -95,6 +131,56 @@ fun IntelligenceScreen(
         }
 
         insight?.deterministicInsight?.takeIf { it.isNotBlank() }?.let { item { InsightCard(it) } }
+
+        if (obligations.isNotEmpty()) {
+            item { SectionTitle("Bills & subscriptions due") }
+            item {
+                val totalDue = upcoming.data?.summary?.totalUpcoming ?: 0.0
+                val currentBalance = f?.currentBalance ?: 0.0
+                val shortfall = (totalDue - currentBalance).coerceAtLeast(0.0)
+                SyncedCard(containerColor = if (shortfall > 0) WarningSoft else SecondarySoft) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = MaterialTheme.shapes.medium, color = Surface) {
+                            Icon(Icons.Outlined.Event, null, tint = if (shortfall > 0) Warning else Secondary, modifier = Modifier.padding(11.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Known obligations", color = Muted, style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                "${money(totalDue)} due across ${obligations.size} item${if (obligations.size == 1) "" else "s"}",
+                                fontWeight = FontWeight.Bold,
+                                color = Ink,
+                            )
+                            Text(
+                                if (shortfall > 0) {
+                                    "Recorded balance is short by ${money(shortfall)}. Prioritise these before discretionary spending."
+                                } else {
+                                    "Covered by the recorded balance. Reserve this amount before discretionary spending."
+                                },
+                                color = Muted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+            items(obligations.take(8), key = { "${it.kind}:${it.name}:${it.dueDate}" }) { obligation ->
+                SyncedCard {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(obligation.name, fontWeight = FontWeight.Bold, color = Ink)
+                            Text(
+                                "${obligation.kind} • ${categoryLabel(obligation.category)} • due ${shortDate(obligation.dueDate)}",
+                                color = Muted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(money(obligation.amount), fontWeight = FontWeight.Black, color = Ink)
+                    }
+                }
+            }
+        }
 
         if (data != null && data.byCategory.isNotEmpty()) {
             item { SectionTitle("Spending by category") }
@@ -150,8 +236,12 @@ fun IntelligenceScreen(
                             Text("Spend ${money(f.avgMonthlySpend)}", color = Muted)
                         }
                     }
-                    if (f.monthlySubscriptionCost > 0) {
+                    if (f.upcomingObligations > 0) {
                         Spacer(Modifier.height(12.dp))
+                        Text("Runway reserves ${money(f.upcomingObligations)} for known near-term obligations.", color = Muted)
+                    }
+                    if (f.monthlySubscriptionCost > 0) {
+                        Spacer(Modifier.height(8.dp))
                         Text("Recurring subscriptions add ${money(f.monthlySubscriptionCost)} per month.", color = Muted)
                     }
                 }
