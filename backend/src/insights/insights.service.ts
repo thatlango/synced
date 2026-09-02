@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { SyncedAiClient } from '../ai/synced-ai.client';
+import { RecurringDetectionService } from '../bills/recurring-detection.service';
 import { addDays, differenceInCalendarDays, startOfMonth, subMonths } from 'date-fns';
 
 @Injectable()
@@ -8,9 +9,11 @@ export class InsightsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: SyncedAiClient,
+    private readonly recurringDetection: RecurringDetectionService,
   ) {}
 
   async financialContext(userId: string) {
+    const detection = await this.recurringDetection.detect(userId, true);
     const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) {
       return {
@@ -22,6 +25,7 @@ export class InsightsService {
         upcomingBills: [],
         upcomingSubscriptions: [],
         upcomingObligations: [],
+        detectedRecurringPatterns: detection.patterns,
         baskets: [],
         plan: null,
       };
@@ -53,7 +57,7 @@ export class InsightsService {
         },
         orderBy: { dueDate: 'asc' },
         take: 12,
-        select: { name: true, amount: true, dueDate: true, recurring: true, category: true },
+        select: { name: true, amount: true, dueDate: true, recurring: true, category: true, accountRef: true },
       }),
       this.prisma.subscription.findMany({
         where: {
@@ -84,6 +88,7 @@ export class InsightsService {
       amount: Number(bill.amount),
       dueDate: bill.dueDate,
       recurring: bill.recurring,
+      inferredBySynced: bill.accountRef?.startsWith('synced:recurrence:') || false,
     }));
     const upcomingSubscriptions = subscriptions.map((subscription) => ({
       type: 'subscription',
@@ -106,6 +111,11 @@ export class InsightsService {
       upcomingBills,
       upcomingSubscriptions,
       upcomingObligations,
+      detectedRecurringPatterns: detection.patterns,
+      recurringDetection: {
+        autoCreated: detection.autoCreated,
+        candidates: detection.patterns.length,
+      },
       baskets: baskets.map((basket) => ({
         name: basket.name,
         targetAmount: basket.targetAmount ? Number(basket.targetAmount) : null,
@@ -159,8 +169,17 @@ export class InsightsService {
       const coverage = shortfall > 0
         ? `Your recorded balance is short by ${this.money(shortfall, context.currency)}.`
         : `Reserving ${totalText} would leave ${this.money(remainingAfterReserve, context.currency)} before other spending.`;
-      obligationInsight = `${nextBill.name} is ${timing}. ${totalText} is due across ${obligationCount} obligation${obligationCount === 1 ? '' : 's'} in the next 30 days. ${coverage}`;
+      const inferred = nextBill.inferredBySynced
+        ? ' Synced inferred this bill from a recurring payment pattern.'
+        : '';
+      obligationInsight = `${nextBill.name} is ${timing}.${inferred} ${totalText} is due across ${obligationCount} obligation${obligationCount === 1 ? '' : 's'} in the next 30 days. ${coverage}`;
     }
+
+    const strongestUntracked = (context.detectedRecurringPatterns || [])
+      .find((pattern: any) => !pattern.linkedBillId && pattern.confidence >= 0.62);
+    const recurrenceInsight = strongestUntracked
+      ? `Synced detected a possible ${strongestUntracked.billingCycle} ${strongestUntracked.name} payment around ${this.money(strongestUntracked.expectedAmount, context.currency)} (${Math.round(strongestUntracked.confidence * 100)}% confidence).`
+      : null;
 
     return {
       financialState: context,
@@ -177,7 +196,8 @@ export class InsightsService {
       },
       spendingInsight,
       obligationInsight,
-      deterministicInsight: obligationInsight || spendingInsight,
+      recurrenceInsight,
+      deterministicInsight: obligationInsight || recurrenceInsight || spendingInsight,
     };
   }
 
@@ -186,12 +206,12 @@ export class InsightsService {
     const result = await this.ai.assist({
       capability: 'explain',
       subjectRef: `synced-user:${userId}`,
-      instruction: `Answer the user's personal finance question using only the supplied Synced financial state. Prioritise overdue and near-term bills or subscriptions when they materially affect available money. Do not invent balances, transactions or obligations. Separate observed facts from suggestions. Do not provide regulated investment, lending or tax advice. Question: ${question || 'What should I pay attention to in my finances right now?'}`,
+      instruction: `Answer the user's personal finance question using only the supplied Synced financial state. Prioritise overdue and near-term bills or subscriptions when they materially affect available money. Treat detected recurring patterns as inferred evidence, not confirmed obligations, unless Synced has auto-created or the user has accepted the bill. State confidence when referring to inferred patterns. Do not invent balances, transactions or obligations. Separate observed facts from suggestions. Do not provide regulated investment, lending or tax advice. Question: ${question || 'What should I pay attention to in my finances right now?'}`,
       context,
     });
     return {
       answer: result,
-      evidenceBoundary: 'Synced ledger, plan, Basket, bill and subscription summaries supplied in this request.',
+      evidenceBoundary: 'Synced ledger, plan, Basket, bill, subscription and recurring-pattern summaries supplied in this request.',
       processedVia: 'tuku-core-ai',
     };
   }
