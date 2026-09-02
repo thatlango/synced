@@ -22,9 +22,6 @@ object SmsTransactionParser {
         val merchant: String?,
     )
 
-    // Match the transaction verb and its amount together. This deliberately avoids
-    // taking the first currency amount in the SMS because many provider alerts show
-    // an account balance before or after the actual transaction amount.
     private val rules = listOf(
         Rule(
             Regex("(?i)\\byou have received\\s+$CURRENCY\\s*$AMOUNT\\s+from\\s+(.+?)(?:\\.|,|$)"),
@@ -139,15 +136,16 @@ object SmsTransactionParser {
             else -> "sms"
         }
 
-        // The body is used only on-device to make an idempotency fingerprint.
-        // Raw SMS text is never included in the candidate sent to Synced.
         val normalized = body.lowercase().replace(Regex("\\s+"), " ").trim()
         val referenceId = sha256("${sender.orEmpty()}|$timestamp|$normalized")
 
+        // Only the SMS timestamp is attached to the structured description. The
+        // backend strips this marker before persistence/display and uses it to
+        // preserve the original transaction date for trends and recurrence detection.
         return StructuredSmsCandidate(
             amount = parsed.amount,
             type = parsed.type,
-            description = parsed.description,
+            description = "${parsed.description} [synced-ts:$timestamp]",
             merchant = parsed.merchant,
             referenceId = referenceId,
             source = source,
