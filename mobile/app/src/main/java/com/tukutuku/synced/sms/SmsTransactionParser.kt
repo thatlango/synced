@@ -110,8 +110,9 @@ object SmsTransactionParser {
 
         val bankLikeMessage = body.contains("account", ignoreCase = true) &&
             (creditWords.containsMatchIn(body) || debitWords.containsMatchIn(body))
+        val loanOrDebtMovement = hasLoanOrDebtLanguage && completedMovementWords.containsMatchIn(body)
 
-        return (knownProvider || bankLikeMessage) &&
+        return (knownProvider || bankLikeMessage || loanOrDebtMovement) &&
             amountPatterns.any { it.containsMatchIn(body) } &&
             (creditWords.containsMatchIn(body) || debitWords.containsMatchIn(body))
     }
@@ -213,7 +214,16 @@ object SmsTransactionParser {
             penaltyAmount = extractLabeledAmount(body, listOf("penalty", "late fee", "default fee", "arrears fee")),
             outstandingBalance = extractLabeledAmount(
                 body,
-                listOf("outstanding balance", "loan balance", "balance outstanding", "remaining balance", "amount outstanding", "debt balance"),
+                listOf(
+                    "outstanding balance",
+                    "loan balance",
+                    "balance outstanding",
+                    "remaining balance",
+                    "amount outstanding",
+                    "debt balance",
+                    "credit card balance",
+                    "card balance",
+                ),
             ),
             dueAmount = extractLabeledAmount(body, listOf("amount due", "repayment due", "payment due", "instalment due", "installment due")),
             dueDate = extractDueDate(body),
