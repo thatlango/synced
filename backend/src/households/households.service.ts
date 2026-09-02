@@ -30,7 +30,7 @@ export class HouseholdsService {
         include: { members: true },
       });
 
-      await tx.wallet.create({
+      const wallet = await tx.wallet.create({
         data: {
           type: 'household',
           householdId: household.id,
@@ -38,14 +38,19 @@ export class HouseholdsService {
         },
       });
 
-      return household;
+      return {
+        ...household,
+        wallet,
+        role: 'admin',
+        _count: { members: household.members.length },
+      };
     });
   }
 
+  // Legacy permanent household codes remain supported. Current Android invites
+  // use revocable/expiring short codes managed by InvitesService.
   async join(userId: string, dto: JoinHouseholdDto) {
     const rawCode = dto.inviteCode.trim();
-
-    // Keep the original household UUID invite code working for older data.
     const household = await this.prisma.household.findUnique({
       where: { inviteCode: rawCode },
     });
@@ -54,7 +59,7 @@ export class HouseholdsService {
       const existing = await this.prisma.householdMember.findUnique({
         where: { householdId_userId: { householdId: household.id, userId } },
       });
-      if (existing) throw new ConflictException('Already a member of this household');
+      if (existing) throw new ConflictException('Already a member of this shared space');
 
       await this.prisma.householdMember.create({
         data: { householdId: household.id, userId, role: 'member' },
@@ -63,8 +68,6 @@ export class HouseholdsService {
       return this.findById(household.id, userId);
     }
 
-    // Current Android invites use short codes managed by InvitesService.
-    // Preview first so a Basket invite cannot be redeemed through the household join surface.
     const modern = await this.invites.preview(userId, rawCode);
     if (modern.targetType !== 'household' || !modern.householdId) {
       throw new BadRequestException('This invite is not for a shared space.');
@@ -74,7 +77,9 @@ export class HouseholdsService {
     return this.findById(modern.householdId, userId);
   }
 
-  async findById(id: string, requestingUserId?: string) {
+  async findById(id: string, requestingUserId: string) {
+    await this.requireMember(id, requestingUserId);
+
     const household = await this.prisma.household.findUnique({
       where: { id },
       include: {
@@ -85,9 +90,7 @@ export class HouseholdsService {
               select: {
                 id: true,
                 name: true,
-                phone: true,
                 avatar: true,
-                personalWallet: { select: { balance: true } },
               },
             },
           },
@@ -95,7 +98,7 @@ export class HouseholdsService {
         _count: { select: { members: true } },
       },
     });
-    if (!household) throw new NotFoundException('Household not found');
+    if (!household) throw new NotFoundException('Shared space not found');
     return household;
   }
 
@@ -110,11 +113,14 @@ export class HouseholdsService {
           },
         },
       },
+      orderBy: { joinedAt: 'asc' },
     });
     return memberships.map((m) => ({ ...m.household, role: m.role, joinedAt: m.joinedAt }));
   }
 
-  async getHouseholdFinancialSummary(householdId: string) {
+  async getHouseholdFinancialSummary(householdId: string, requestingUserId: string) {
+    await this.requireMember(householdId, requestingUserId);
+
     const household = await this.prisma.household.findUnique({
       where: { id: householdId },
       include: {
@@ -122,51 +128,54 @@ export class HouseholdsService {
         members: { select: { userId: true, user: { select: { id: true, name: true } } } },
       },
     });
-    if (!household) throw new NotFoundException('Household not found');
+    if (!household) throw new NotFoundException('Shared space not found');
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const memberBreakdown = await Promise.all(
       household.members.map(async (member) => {
-        const spent = await this.prisma.ledgerEntry.aggregate({
-          where: {
-            walletId: household.wallet?.id,
-            userId: member.userId,
-            type: 'debit',
-            createdAt: { gte: startOfMonth },
-          },
-          _sum: { amount: true },
-        });
-
-        const earned = await this.prisma.ledgerEntry.aggregate({
-          where: {
-            walletId: household.wallet?.id,
-            userId: member.userId,
-            type: 'credit',
-            createdAt: { gte: startOfMonth },
-          },
-          _sum: { amount: true },
-        });
+        const [spent, earned] = await Promise.all([
+          this.prisma.ledgerEntry.aggregate({
+            where: {
+              walletId: household.wallet?.id,
+              userId: member.userId,
+              type: 'debit',
+              createdAt: { gte: startOfMonth },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.ledgerEntry.aggregate({
+            where: {
+              walletId: household.wallet?.id,
+              userId: member.userId,
+              type: 'credit',
+              createdAt: { gte: startOfMonth },
+            },
+            _sum: { amount: true },
+          }),
+        ]);
 
         return {
           userId: member.userId,
           name: member.user.name,
-          totalSpent: spent._sum.amount || 0,
-          totalEarned: earned._sum.amount || 0,
+          totalSpent: Number(spent._sum.amount || 0),
+          totalEarned: Number(earned._sum.amount || 0),
         };
       }),
     );
 
-    const totalSpent = memberBreakdown.reduce((sum, m) => sum + Number(m.totalSpent), 0);
+    const totalSpent = memberBreakdown.reduce((sum, m) => sum + m.totalSpent, 0);
+    const totalEarned = memberBreakdown.reduce((sum, m) => sum + m.totalEarned, 0);
 
     return {
       household: {
         id: household.id,
         name: household.name,
-        walletBalance: household.wallet?.balance || 0,
+        walletBalance: Number(household.wallet?.balance || 0),
       },
       totalSpentThisMonth: totalSpent,
+      totalEarnedThisMonth: totalEarned,
       memberBreakdown,
     };
   }
@@ -180,7 +189,7 @@ export class HouseholdsService {
     const member = await this.prisma.householdMember.findUnique({
       where: { householdId_userId: { householdId: id, userId } },
     });
-    if (!member) throw new NotFoundException('Not a member of this household');
+    if (!member) throw new NotFoundException('Not a member of this shared space');
 
     const adminCount = await this.prisma.householdMember.count({
       where: { householdId: id, role: 'admin' },
@@ -192,24 +201,37 @@ export class HouseholdsService {
     await this.prisma.householdMember.delete({
       where: { householdId_userId: { householdId: id, userId } },
     });
-    return { message: 'Left household successfully' };
+    return { message: 'Left shared space successfully' };
   }
 
   async removeMember(householdId: string, adminId: string, memberId: string) {
     await this.requireAdmin(householdId, adminId);
     if (adminId === memberId) throw new BadRequestException('Cannot remove yourself');
+
+    const target = await this.prisma.householdMember.findUnique({
+      where: { householdId_userId: { householdId, userId: memberId } },
+    });
+    if (!target) throw new NotFoundException('Member not found in this shared space');
+
     await this.prisma.householdMember.delete({
       where: { householdId_userId: { householdId, userId: memberId } },
     });
     return { message: 'Member removed successfully' };
   }
 
-  private async requireAdmin(householdId: string, userId: string) {
+  private async requireMember(householdId: string, userId: string) {
     const member = await this.prisma.householdMember.findUnique({
       where: { householdId_userId: { householdId, userId } },
     });
-    if (!member || member.role !== 'admin') {
-      throw new ForbiddenException('Admin access required');
+    if (!member) throw new ForbiddenException('Shared-space membership required');
+    return member;
+  }
+
+  private async requireAdmin(householdId: string, userId: string) {
+    const member = await this.requireMember(householdId, userId);
+    if (member.role !== 'admin') {
+      throw new ForbiddenException('Shared-space admin access required');
     }
+    return member;
   }
 }
