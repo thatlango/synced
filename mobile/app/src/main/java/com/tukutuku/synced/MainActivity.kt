@@ -22,7 +22,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -152,11 +151,10 @@ private fun SyncedRoot(
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(tab.icon, contentDescription = null) },
-                            label = { Text(tab.label) },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = null,
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = Ink,
-                                selectedTextColor = Ink,
                                 indicatorColor = PrimarySoft,
                             ),
                         )
