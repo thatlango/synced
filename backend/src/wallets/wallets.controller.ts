@@ -13,7 +13,7 @@ export class WalletsController {
   constructor(private readonly walletsService: WalletsService) {}
 
   @Get('summary')
-  @ApiOperation({ summary: 'Get wallet summary (personal + household)' })
+  @ApiOperation({ summary: 'Get wallet summary (personal + shared spaces)' })
   getWalletSummary(@CurrentUser('id') userId: string) {
     return this.walletsService.getWalletSummary(userId);
   }
@@ -25,13 +25,16 @@ export class WalletsController {
   }
 
   @Get('household/:householdId')
-  @ApiOperation({ summary: 'Get household wallet' })
-  getHouseholdWallet(@Param('householdId') householdId: string) {
-    return this.walletsService.getHouseholdWallet(householdId);
+  @ApiOperation({ summary: 'Get shared-space wallet' })
+  getHouseholdWallet(
+    @Param('householdId') householdId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.walletsService.getHouseholdWallet(householdId, userId);
   }
 
   @Post(':id/fund')
-  @ApiOperation({ summary: 'Fund a wallet' })
+  @ApiOperation({ summary: 'Fund a personal or shared-space wallet' })
   fundWallet(
     @Param('id') walletId: string,
     @CurrentUser('id') userId: string,
@@ -46,9 +49,10 @@ export class WalletsController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   getLedger(
     @Param('id') walletId: string,
+    @CurrentUser('id') userId: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.walletsService.getLedgerHistory(walletId, page, limit);
+    return this.walletsService.getLedgerHistory(walletId, userId, page, limit);
   }
 }
