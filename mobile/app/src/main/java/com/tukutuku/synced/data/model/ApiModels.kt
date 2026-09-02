@@ -74,6 +74,7 @@ data class Transaction(
     val merchant: String? = null,
     val source: String? = null,
     val visibility: String? = null,
+    val metadata: JsonElement? = null,
     val createdAt: String? = null,
 )
 @Serializable data class PageMeta(val total: Int = 0, val page: Int = 1, val limit: Int = 20, val totalPages: Int = 1, val hasNext: Boolean = false, val hasPrev: Boolean = false)
@@ -153,8 +154,7 @@ data class Invite(
 @Serializable data class CreateInviteRequest(val targetType: String, val basketId: String? = null, val householdId: String? = null, val role: String? = null, val maxUses: Int = 1)
 @Serializable data class RedeemInviteResult(val joined: Boolean = false, val duplicate: Boolean = false, val targetType: String? = null, val basketId: String? = null, val householdId: String? = null)
 
-@Serializable
-data class SpendingTrend(val spendingVsPriorAveragePercent: Int = 0, val direction: String = "stable")
+@Serializable data class SpendingTrend(val spendingVsPriorAveragePercent: Int = 0, val direction: String = "stable")
 @Serializable data class InsightSummary(val trend: SpendingTrend = SpendingTrend(), val deterministicInsight: String = "", val nextBill: JsonElement? = null, val financialState: JsonElement? = null)
 @Serializable data class AskInsightRequest(val question: String)
 @Serializable data class AskInsightResponse(val answer: JsonElement? = null, val evidenceBoundary: String? = null, val processedVia: String? = null)
@@ -167,6 +167,16 @@ data class SpendingTrend(val spendingVsPriorAveragePercent: Int = 0, val directi
     val referenceId: String? = null,
     val source: String,
     val confidence: Double? = null,
+    val financialKind: String? = null,
+    val financialSubtype: String? = null,
+    val counterparty: String? = null,
+    val principalAmount: Double? = null,
+    val interestAmount: Double? = null,
+    val feeAmount: Double? = null,
+    val penaltyAmount: Double? = null,
+    val outstandingBalance: Double? = null,
+    val dueAmount: Double? = null,
+    val dueDate: String? = null,
 )
 @Serializable data class SmsCandidateBulkRequest(val walletId: String, val candidates: List<StructuredSmsCandidate>)
 @Serializable data class SmsCandidateBulkResult(val processed: Int? = null, val skipped: Int? = null, val results: List<JsonElement> = emptyList())
