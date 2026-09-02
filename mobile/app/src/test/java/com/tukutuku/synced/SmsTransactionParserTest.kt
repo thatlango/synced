@@ -72,6 +72,91 @@ class SmsTransactionParserTest {
     }
 
     @Test
+    fun recognisesLoanDisbursementAndOutstandingBalance() {
+        val result = SmsTransactionParser.parse(
+            "Village SACCO",
+            "Your loan disbursement of UGX 1,000,000 has been credited. Outstanding loan balance UGX 1,100,000.",
+            1234,
+        )!!
+
+        assertEquals("credit", result.type)
+        assertEquals(1000000.0, result.amount, 0.01)
+        assertEquals("loan", result.financialKind)
+        assertEquals("loan_disbursement", result.financialSubtype)
+        assertEquals(1100000.0, result.outstandingBalance!!, 0.01)
+        assertTrue(result.description.startsWith("Loan disbursement received"))
+    }
+
+    @Test
+    fun picksRepaymentInsteadOfEarlierOutstandingBalanceAndSplitsComponents() {
+        val result = SmsTransactionParser.parse(
+            "Pride Microfinance",
+            "Outstanding loan balance UGX 900,000. Loan repayment of UGX 100,000 was deducted from your account. Principal UGX 80,000 interest UGX 20,000.",
+            1234,
+        )!!
+
+        assertEquals("debit", result.type)
+        assertEquals(100000.0, result.amount, 0.01)
+        assertEquals("loan", result.financialKind)
+        assertEquals("loan_repayment", result.financialSubtype)
+        assertEquals(80000.0, result.principalAmount!!, 0.01)
+        assertEquals(20000.0, result.interestAmount!!, 0.01)
+        assertEquals(900000.0, result.outstandingBalance!!, 0.01)
+    }
+
+    @Test
+    fun recognisesCreditCardDebtRepaymentAndCardBalance() {
+        val result = SmsTransactionParser.parse(
+            "Card Services",
+            "Your credit card payment of UGX 250,000 has been debited from your account. Outstanding card balance UGX 750,000.",
+            1234,
+        )!!
+
+        assertEquals("debit", result.type)
+        assertEquals(250000.0, result.amount, 0.01)
+        assertEquals("debt", result.financialKind)
+        assertEquals("debt_repayment", result.financialSubtype)
+        assertEquals(750000.0, result.outstandingBalance!!, 0.01)
+    }
+
+    @Test
+    fun recognisesRepaymentReceivedAsCredit() {
+        val result = SmsTransactionParser.parse(
+            "JOHN DOE",
+            "Loan repayment received UGX 120,000 from JOHN DOE. Outstanding loan balance UGX 480,000.",
+            1234,
+        )!!
+
+        assertEquals("credit", result.type)
+        assertEquals(120000.0, result.amount, 0.01)
+        assertEquals("loan", result.financialKind)
+        assertEquals("loan_repayment_received", result.financialSubtype)
+        assertEquals(480000.0, result.outstandingBalance!!, 0.01)
+    }
+
+    @Test
+    fun ignoresLoanReminderWithoutCompletedMoneyMovement() {
+        assertNull(
+            SmsTransactionParser.parse(
+                "Village SACCO",
+                "Reminder: your loan repayment of UGX 100,000 is due on 05/09/2026. Outstanding balance UGX 900,000.",
+                1234,
+            ),
+        )
+    }
+
+    @Test
+    fun ignoresLoanOfferEvenWhenAmountIsPresent() {
+        assertNull(
+            SmsTransactionParser.parse(
+                "QuickCash",
+                "You are pre-approved for a loan offer of UGX 500,000. Apply today.",
+                1234,
+            ),
+        )
+    }
+
+    @Test
     fun ignoresOtpEvenWhenAmountIsPresent() {
         assertNull(
             SmsTransactionParser.parse(
