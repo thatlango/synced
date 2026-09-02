@@ -36,6 +36,7 @@ export class InvitesService {
         throw new ForbiddenException('Only the Basket owner can invite people.');
       }
     } else {
+      if (!householdId) throw new BadRequestException('Shared-space id is required');
       const hh = await this.prisma.householdMember.findUnique({
         where: { householdId_userId: { householdId, userId } },
       });
