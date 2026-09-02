@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CategorizationService } from '../categorization/categorization.service';
@@ -44,6 +45,9 @@ export class TransactionsService {
     const category =
       dto.category ||
       this.categorization.categorize(cleanDescription || '', dto.merchant);
+    const visibility = wallet.type === 'household'
+      ? 'household'
+      : (dto.visibility || 'personal');
 
     // A manual rescan keeps the same one-way SMS reference fingerprint. Older
     // Synced builds imported those rows at sync time, so reconcile their original
@@ -62,6 +66,7 @@ export class TransactionsService {
               description: cleanDescription,
               merchant: dto.merchant,
               category: category as any,
+              visibility: visibility as any,
             },
           });
           await tx.ledgerEntry.updateMany({
@@ -70,6 +75,7 @@ export class TransactionsService {
               createdAt: occurredAt,
               description: cleanDescription,
               category: category as any,
+              visibility: visibility as any,
             },
           });
           return transaction;
@@ -98,7 +104,7 @@ export class TransactionsService {
           description: cleanDescription,
           merchant: dto.merchant,
           source: (dto.source as any) || 'manual',
-          visibility: (dto.visibility as any) || 'personal',
+          visibility: visibility as any,
           referenceId: dto.referenceId || undefined,
           createdAt: occurredAt,
         },
@@ -125,7 +131,7 @@ export class TransactionsService {
           balanceAfter,
           category: category as any,
           source: (dto.source as any) || 'manual',
-          visibility: (dto.visibility as any) || 'personal',
+          visibility: visibility as any,
           description: cleanDescription,
           referenceId: dto.referenceId || transaction.id,
           createdAt: occurredAt,
@@ -137,34 +143,39 @@ export class TransactionsService {
   }
 
   async findAll(userId: string, dto: FilterTransactionsDto) {
-    const page = dto.page || 1;
-    const limit = dto.limit || 20;
+    const page = Math.max(1, Number(dto.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(dto.limit) || 20));
     const skip = (page - 1) * limit;
 
-    const userWallets = await this.prisma.wallet.findMany({
-      where: { userId },
-    });
-    const householdWallets = await this.prisma.wallet.findMany({
-      where: {
-        household: {
-          members: { some: { userId } },
+    const [userWallets, householdWallets] = await Promise.all([
+      this.prisma.wallet.findMany({ where: { userId } }),
+      this.prisma.wallet.findMany({
+        where: {
+          household: {
+            members: { some: { userId } },
+          },
         },
-      },
-    });
+      }),
+    ]);
 
-    let walletIds: string[] = [];
-    if (dto.scope === 'personal') {
-      walletIds = userWallets.map((w) => w.id);
-    } else if (dto.scope === 'household') {
-      walletIds = householdWallets.map((w) => w.id);
-    } else {
-      walletIds = [
-        ...userWallets.map((w) => w.id),
-        ...householdWallets.map((w) => w.id),
-      ];
+    const personalIds = userWallets.map((w) => w.id);
+    const sharedIds = householdWallets.map((w) => w.id);
+    const allAccessibleIds = [...personalIds, ...sharedIds];
+
+    let walletIds: string[];
+    if (dto.scope === 'personal') walletIds = personalIds;
+    else if (dto.scope === 'household') walletIds = sharedIds;
+    else walletIds = allAccessibleIds;
+
+    if (dto.walletId) {
+      if (!allAccessibleIds.includes(dto.walletId)) {
+        throw new ForbiddenException('Wallet access denied');
+      }
+      if (!walletIds.includes(dto.walletId)) {
+        return { data: [], meta: buildPaginationMeta(0, page, limit) };
+      }
+      walletIds = [dto.walletId];
     }
-
-    if (dto.walletId) walletIds = [dto.walletId];
 
     const where: any = { walletId: { in: walletIds } };
     if (dto.category) where.category = dto.category;
@@ -182,8 +193,8 @@ export class TransactionsService {
         skip,
         take: limit,
         include: {
-          user: { select: { id: true, name: true, phone: true } },
-          wallet: { select: { id: true, type: true } },
+          user: { select: { id: true, name: true } },
+          wallet: { select: { id: true, type: true, householdId: true, userId: true } },
         },
       }),
       this.prisma.transaction.count({ where }),
@@ -205,6 +216,20 @@ export class TransactionsService {
       },
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
+
+    if (transaction.wallet.userId !== userId) {
+      if (!transaction.wallet.householdId) throw new ForbiddenException('Transaction access denied');
+      const member = await this.prisma.householdMember.findUnique({
+        where: {
+          householdId_userId: {
+            householdId: transaction.wallet.householdId,
+            userId,
+          },
+        },
+      });
+      if (!member) throw new ForbiddenException('Transaction access denied');
+    }
+
     return transaction;
   }
 
