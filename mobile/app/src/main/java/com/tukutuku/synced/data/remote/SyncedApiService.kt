@@ -12,6 +12,7 @@ interface SyncedApiService {
 
     @GET("transactions") suspend fun transactions(
         @Query("scope") scope: String = "all",
+        @Query("walletId") walletId: String? = null,
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 50,
     ): ApiEnvelope<TransactionPage>

@@ -182,7 +182,9 @@ private fun SyncedRoot(
             composable("transactions") { TransactionsScreen() }
             composable("plan") { PlanScreen() }
             composable("baskets") { BasketsScreen(onJoin = { nav.navigate("join?code=") }) }
-            composable("household") { HouseholdScreen() }
+            composable("household") {
+                HouseholdScreen(onJoin = { nav.navigate("join?code=") })
+            }
             composable("sms") { SmsSyncScreen(onBack = { nav.popBackStack() }) }
             composable("ask") { AskSyncedScreen(onBack = { nav.popBackStack() }) }
             composable("bills") { BillsScreen(onBack = { nav.popBackStack() }) }
@@ -198,9 +200,11 @@ private fun SyncedRoot(
             ) { backStackEntry ->
                 JoinInviteScreen(
                     initialCode = backStackEntry.arguments?.getString("code"),
-                    onDone = {
-                        nav.navigate("home") {
-                            popUpTo("home") { inclusive = true }
+                    onDone = { result ->
+                        val destination = if (result.targetType == "basket") "baskets" else "household"
+                        nav.navigate(destination) {
+                            popUpTo("home")
+                            launchSingleTop = true
                         }
                     },
                     onBack = { nav.popBackStack() },

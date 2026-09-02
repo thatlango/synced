@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 
@@ -84,7 +84,12 @@ export class AnalyticsService {
     };
   }
 
-  async householdInsights(householdId: string) {
+  async householdInsights(householdId: string, userId: string) {
+    const membership = await this.prisma.householdMember.findUnique({
+      where: { householdId_userId: { householdId, userId } },
+    });
+    if (!membership) throw new ForbiddenException('Shared-space membership required');
+
     const wallet = await this.prisma.wallet.findUnique({ where: { householdId } });
     if (!wallet) return null;
 
@@ -96,15 +101,23 @@ export class AnalyticsService {
       include: { user: { select: { id: true, name: true } } },
     });
 
-    // Per-member breakdown
     const memberBreakdown = await Promise.all(
       members.map(async (member) => {
-        const [spent, byCategory] = await Promise.all([
+        const [spent, earned, byCategory] = await Promise.all([
           this.prisma.ledgerEntry.aggregate({
             where: {
               walletId: wallet.id,
               userId: member.userId,
               type: 'debit',
+              createdAt: { gte: thisMonthStart },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.ledgerEntry.aggregate({
+            where: {
+              walletId: wallet.id,
+              userId: member.userId,
+              type: 'credit',
               createdAt: { gte: thisMonthStart },
             },
             _sum: { amount: true },
@@ -127,6 +140,7 @@ export class AnalyticsService {
           userId: member.userId,
           name: member.user.name,
           totalSpent: Number(spent._sum.amount || 0),
+          totalEarned: Number(earned._sum.amount || 0),
           topCategories: byCategory.map((c) => ({
             category: c.category,
             amount: Number(c._sum.amount),
@@ -135,9 +149,13 @@ export class AnalyticsService {
       }),
     );
 
-    const [totalSpent, byCategory] = await Promise.all([
+    const [totalSpent, totalEarned, byCategory] = await Promise.all([
       this.prisma.ledgerEntry.aggregate({
         where: { walletId: wallet.id, type: 'debit', createdAt: { gte: thisMonthStart } },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: { walletId: wallet.id, type: 'credit', createdAt: { gte: thisMonthStart } },
         _sum: { amount: true },
       }),
       this.prisma.ledgerEntry.groupBy({
@@ -149,9 +167,12 @@ export class AnalyticsService {
     ]);
 
     const totalSpentAmount = Number(totalSpent._sum.amount || 0);
+    const totalEarnedAmount = Number(totalEarned._sum.amount || 0);
 
     return {
+      walletBalance: Number(wallet.balance),
       totalSpentThisMonth: totalSpentAmount,
+      totalEarnedThisMonth: totalEarnedAmount,
       memberBreakdown: memberBreakdown.sort((a, b) => b.totalSpent - a.totalSpent),
       biggestSpender:
         memberBreakdown.length > 0

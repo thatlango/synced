@@ -15,13 +15,13 @@ export class BillsController {
   constructor(private readonly billsService: BillsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a bill' })
+  @ApiOperation({ summary: 'Create a personal or shared-space bill' })
   create(@CurrentUser('id') userId: string, @Body() dto: CreateBillDto) {
     return this.billsService.create(userId, dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all bills' })
+  @ApiOperation({ summary: 'Get all accessible bills' })
   @ApiQuery({ name: 'includePaid', required: false, type: Boolean })
   findAll(@CurrentUser('id') userId: string, @Query('includePaid') includePaid?: boolean) {
     return this.billsService.findAll(userId, includePaid);
@@ -44,14 +44,14 @@ export class BillsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get bill by ID' })
-  findById(@Param('id') id: string) {
-    return this.billsService.findById(id);
+  @ApiOperation({ summary: 'Get an accessible bill by ID' })
+  findById(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.billsService.findById(id, userId);
   }
 
   @Patch(':id/mark-paid')
-  @ApiOperation({ summary: 'Mark a bill as paid and roll recurring bills into their next cycle' })
-  markPaid(@Param('id') id: string) {
-    return this.billsService.markPaid(id);
+  @ApiOperation({ summary: 'Mark an accessible bill as paid and roll recurring bills into their next cycle' })
+  markPaid(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.billsService.markPaid(id, userId);
   }
 }

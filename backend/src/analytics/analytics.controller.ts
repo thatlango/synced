@@ -25,8 +25,11 @@ export class AnalyticsController {
   }
 
   @Get('household/:householdId')
-  @ApiOperation({ summary: 'Get household spending insights with per-member breakdown' })
-  householdInsights(@Param('householdId') householdId: string) {
-    return this.analyticsService.householdInsights(householdId);
+  @ApiOperation({ summary: 'Get shared-space spending insights with per-member breakdown' })
+  householdInsights(
+    @Param('householdId') householdId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.analyticsService.householdInsights(householdId, userId);
   }
 }

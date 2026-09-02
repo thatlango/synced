@@ -62,6 +62,14 @@ data class HouseholdWalletRef(
 )
 @Serializable data class WalletSummary(val personal: Wallet? = null, val households: List<HouseholdWalletRef> = emptyList(), val summary: WalletTotals = WalletTotals())
 
+@Serializable data class TransactionUser(val id: String, val name: String? = null)
+@Serializable data class TransactionWallet(
+    val id: String,
+    val type: String,
+    val householdId: String? = null,
+    val userId: String? = null,
+)
+
 @Serializable
 data class Transaction(
     val id: String,
@@ -75,6 +83,8 @@ data class Transaction(
     val source: String? = null,
     val visibility: String? = null,
     val createdAt: String? = null,
+    val user: TransactionUser? = null,
+    val wallet: TransactionWallet? = null,
 )
 @Serializable data class PageMeta(val total: Int = 0, val page: Int = 1, val limit: Int = 20, val totalPages: Int = 1, val hasNext: Boolean = false, val hasPrev: Boolean = false)
 @Serializable data class TransactionPage(val data: List<Transaction> = emptyList(), val meta: PageMeta = PageMeta())
