@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsOptional,
   IsNotEmpty,
+  IsObject,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -58,6 +59,11 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   referenceId?: string;
+
+  @ApiPropertyOptional({ description: 'Structured, non-sensitive classification metadata such as loan/debt semantics.' })
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
 
   @ApiPropertyOptional({ enum: ['personal', 'household', 'both'], default: 'personal' })
   @IsOptional()

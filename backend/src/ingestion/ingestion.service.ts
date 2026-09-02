@@ -10,6 +10,66 @@ export interface ParsedSmsTransaction {
   merchant?: string;
   referenceId?: string;
   source: 'mtn' | 'airtel' | 'sms';
+  financialKind?: 'loan' | 'debt';
+  financialSubtype?: string;
+  counterparty?: string;
+  principalAmount?: number;
+  interestAmount?: number;
+  feeAmount?: number;
+  penaltyAmount?: number;
+  outstandingBalance?: number;
+  dueAmount?: number;
+  dueDate?: string;
+}
+
+type StructuredCandidate = ParsedSmsTransaction & { confidence?: number };
+
+function cleanOptionalString(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = value.trim().slice(0, maxLength);
+  return cleaned || undefined;
+}
+
+function cleanOptionalAmount(value: unknown): number | undefined {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : undefined;
+}
+
+function buildFinancialMetadata(candidate: StructuredCandidate): Record<string, unknown> | undefined {
+  if (!candidate.financialKind && !candidate.financialSubtype) return undefined;
+
+  const metadata: Record<string, unknown> = {
+    classificationSource: 'sms_local_parser',
+  };
+
+  if (candidate.financialKind) metadata.financialKind = candidate.financialKind;
+  const subtype = cleanOptionalString(candidate.financialSubtype, 64);
+  if (subtype) metadata.financialSubtype = subtype;
+  const counterparty = cleanOptionalString(candidate.counterparty, 120);
+  if (counterparty) metadata.counterparty = counterparty;
+
+  const numericFields: Array<[string, unknown]> = [
+    ['principalAmount', candidate.principalAmount],
+    ['interestAmount', candidate.interestAmount],
+    ['feeAmount', candidate.feeAmount],
+    ['penaltyAmount', candidate.penaltyAmount],
+    ['outstandingBalance', candidate.outstandingBalance],
+    ['dueAmount', candidate.dueAmount],
+  ];
+  for (const [key, raw] of numericFields) {
+    const value = cleanOptionalAmount(raw);
+    if (value !== undefined) metadata[key] = value;
+  }
+
+  const dueDate = cleanOptionalString(candidate.dueDate, 40);
+  if (dueDate) metadata.dueDate = dueDate;
+
+  const confidence = Number(candidate.confidence);
+  if (Number.isFinite(confidence) && confidence >= 0 && confidence <= 1) {
+    metadata.classificationConfidence = confidence;
+  }
+
+  return metadata;
 }
 
 // ─── Amount parser ─────────────────────────────────────────────────────────
@@ -326,11 +386,10 @@ export class IngestionService {
     return { total: smsBodies.length, ingested, skipped: smsBodies.length - ingested, results };
   }
 
-
   async ingestCandidate(
     userId: string,
     walletId: string,
-    candidate: ParsedSmsTransaction & { confidence?: number },
+    candidate: StructuredCandidate,
   ) {
     if (!candidate || !Number.isFinite(Number(candidate.amount)) || Number(candidate.amount) <= 0) {
       return { accepted: false, reason: 'Invalid transaction amount' };
@@ -348,6 +407,7 @@ export class IngestionService {
       ? String(candidate.referenceId).trim().slice(0, 180)
       : undefined;
     const category = this.categorization.categorize(description, merchant);
+    const metadata = buildFinancialMetadata(candidate);
 
     try {
       const transaction = await this.transactions.create(userId, {
@@ -359,6 +419,7 @@ export class IngestionService {
         merchant,
         source: candidate.source,
         referenceId,
+        metadata,
       });
       return { accepted: true, transaction };
     } catch (error: any) {
@@ -374,7 +435,7 @@ export class IngestionService {
   async ingestCandidateBulk(
     userId: string,
     walletId: string,
-    candidates: Array<ParsedSmsTransaction & { confidence?: number }>,
+    candidates: StructuredCandidate[],
   ) {
     const capped = candidates.slice(0, 500);
     const results = [];
