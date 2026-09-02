@@ -27,15 +27,18 @@ export class TransactionsService {
     });
     if (!wallet) throw new NotFoundException('Wallet not found or not available to this account');
 
-    if (dto.type === 'debit' && Number(wallet.balance) < dto.amount) {
+    const isHistoricalFinancialImport = Boolean(
+      dto.occurredAt && ['mtn', 'airtel', 'sms'].includes(dto.source || ''),
+    );
+    if (dto.type === 'debit' && Number(wallet.balance) < dto.amount && !isHistoricalFinancialImport) {
       throw new BadRequestException('Insufficient wallet balance');
     }
 
-    // Auto-categorize if not provided
     const category =
       dto.category ||
       this.categorization.categorize(dto.description || '', dto.merchant);
 
+    const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
     const balanceBefore = Number(wallet.balance);
     const balanceAfter =
       dto.type === 'credit'
@@ -43,7 +46,6 @@ export class TransactionsService {
         : balanceBefore - dto.amount;
 
     return this.prisma.$transaction(async (tx) => {
-      // Create transaction record
       const transaction = await tx.transaction.create({
         data: {
           walletId: dto.walletId,
@@ -56,10 +58,10 @@ export class TransactionsService {
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
           referenceId: dto.referenceId || undefined,
+          createdAt: occurredAt,
         },
       });
 
-      // Update wallet balance
       await tx.wallet.update({
         where: { id: dto.walletId },
         data: {
@@ -70,7 +72,6 @@ export class TransactionsService {
         },
       });
 
-      // Create ledger entry
       await tx.ledgerEntry.create({
         data: {
           walletId: dto.walletId,
@@ -85,6 +86,7 @@ export class TransactionsService {
           visibility: (dto.visibility as any) || 'personal',
           description: dto.description,
           referenceId: dto.referenceId || transaction.id,
+          createdAt: occurredAt,
         },
       });
 
@@ -97,7 +99,6 @@ export class TransactionsService {
     const limit = dto.limit || 20;
     const skip = (page - 1) * limit;
 
-    // Get user's wallets
     const userWallets = await this.prisma.wallet.findMany({
       where: { userId },
     });
@@ -172,7 +173,6 @@ export class TransactionsService {
     else if (period === 'month') startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     else startDate = new Date(now.getFullYear(), 0, 1);
 
-    // Get personal wallet
     const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new NotFoundException('Wallet not found');
 
