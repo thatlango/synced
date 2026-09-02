@@ -16,8 +16,8 @@ android {
         applicationId = "com.tukutuku.synced"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SYNCED_API_BASE_URL", "\"https://api.synced.tukutuku.org/api/v1/\"")
         buildConfigField("String", "TUKU_CORE_API_BASE_URL", "\"https://core.tukutuku.org/api/v1/\"")
@@ -67,7 +67,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.hilt.work)
