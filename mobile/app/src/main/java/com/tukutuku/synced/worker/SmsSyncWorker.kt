@@ -27,11 +27,8 @@ class SmsSyncWorker @AssistedInject constructor(
         val rescan = inputData.getBoolean(KEY_RESCAN, false)
         val now = System.currentTimeMillis()
         val previousCheckpoint = sessions.smsLastTimestamp()
-        val since = if (rescan) {
-            now - RESCAN_DAYS * DAY_MS
-        } else {
-            previousCheckpoint.takeIf { it > 0 } ?: now - RESCAN_DAYS * DAY_MS
-        }
+        val since = if (rescan) now - RESCAN_DAYS * DAY_MS
+        else previousCheckpoint.takeIf { it > 0 } ?: now - RESCAN_DAYS * DAY_MS
 
         return try {
             val scan = reader.scan(since, limit = if (rescan) 1500 else 400)
@@ -45,6 +42,7 @@ class SmsSyncWorker @AssistedInject constructor(
                         "candidates" to 0,
                         "processed" to 0,
                         "skipped" to 0,
+                        "recurringBillsCreated" to 0,
                         "rescanDays" to RESCAN_DAYS,
                     ),
                 )
@@ -54,12 +52,16 @@ class SmsSyncWorker @AssistedInject constructor(
             val processed = ingestion?.processed ?: scan.candidates.size
             val skipped = ingestion?.skipped ?: 0
 
-            // Keep the incremental cursor moving forward after a successful network pass.
-            // Manual sync still performs an explicit 90-day rescan, so parser improvements can
-            // recover older messages even if an earlier app version advanced the cursor.
             if (scan.newestTimestamp > previousCheckpoint) {
                 sessions.setSmsLastTimestamp(scan.newestTimestamp)
             }
+
+            // Recurrence detection only sees structured transaction records. If the user has
+            // opted in, a high-confidence bill-like pattern can become a recurring bill after
+            // the sync that provides enough evidence. Lower-confidence patterns remain suggestions.
+            val recurringCreated = if (isAutoCreateRecurringBillsEnabled(applicationContext)) {
+                runCatching { repo.discoverRecurringBills(autoCreate = true).created.size }.getOrDefault(0)
+            } else 0
 
             Result.success(
                 workDataOf(
@@ -67,6 +69,7 @@ class SmsSyncWorker @AssistedInject constructor(
                     "candidates" to scan.candidates.size,
                     "processed" to processed,
                     "skipped" to skipped,
+                    "recurringBillsCreated" to recurringCreated,
                     "rescanDays" to RESCAN_DAYS,
                 ),
             )
@@ -84,20 +87,16 @@ class SmsSyncWorker @AssistedInject constructor(
         private const val KEY_RESCAN = "rescan"
         private const val PREFS = "synced_sms_sync"
         private const val BACKGROUND_ENABLED = "background_enabled"
+        private const val AUTO_CREATE_RECURRING = "auto_create_recurring_bills"
         private const val RESCAN_DAYS = 90
         private const val DAY_MS = 86_400_000L
 
         fun schedule(context: Context) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(BACKGROUND_ENABLED, true)
-                .apply()
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+                .edit().putBoolean(BACKGROUND_ENABLED, true).apply()
+            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
             val request = PeriodicWorkRequestBuilder<SmsSyncWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .build()
+                .setConstraints(constraints).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE,
                 ExistingPeriodicWorkPolicy.UPDATE,
@@ -107,9 +106,7 @@ class SmsSyncWorker @AssistedInject constructor(
 
         fun cancel(context: Context) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(BACKGROUND_ENABLED, false)
-                .apply()
+                .edit().putBoolean(BACKGROUND_ENABLED, false).apply()
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE)
         }
 
@@ -117,14 +114,19 @@ class SmsSyncWorker @AssistedInject constructor(
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(BACKGROUND_ENABLED, false)
 
+        fun setAutoCreateRecurringBills(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putBoolean(AUTO_CREATE_RECURRING, enabled).apply()
+        }
+
+        fun isAutoCreateRecurringBillsEnabled(context: Context): Boolean =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(AUTO_CREATE_RECURRING, false)
+
         fun runNow(context: Context): UUID {
             val request = OneTimeWorkRequestBuilder<SmsSyncWorker>()
                 .setInputData(workDataOf(KEY_RESCAN to true))
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build(),
-                )
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context).enqueue(request)
             return request.id
