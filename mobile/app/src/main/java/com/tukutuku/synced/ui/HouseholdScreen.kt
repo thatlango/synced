@@ -90,9 +90,11 @@ fun HouseholdScreen(vm: HouseholdViewModel = hiltViewModel()) {
         )
     }
     invite?.let {
+        val fallback = "synced://join?code=${it.code}"
         InviteDialog(
             code = it.code,
-            payload = it.qrPayload ?: it.joinUrl ?: "synced://join?code=${it.code}",
+            qrPayload = it.qrPayload ?: fallback,
+            shareUrl = it.joinUrl ?: it.qrPayload ?: fallback,
             onDismiss = vm::clearInvite,
         )
     }
