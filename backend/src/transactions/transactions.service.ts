@@ -56,6 +56,7 @@ export class TransactionsService {
           source: (dto.source as any) || 'manual',
           visibility: (dto.visibility as any) || 'personal',
           referenceId: dto.referenceId || undefined,
+          metadata: dto.metadata as any,
         },
       });
 
