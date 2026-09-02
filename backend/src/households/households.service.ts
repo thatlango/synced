@@ -6,11 +6,15 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { InvitesService } from '../invites/invites.service';
 import { CreateHouseholdDto, JoinHouseholdDto, UpdateHouseholdDto } from './dto/household.dto';
 
 @Injectable()
 export class HouseholdsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private invites: InvitesService,
+  ) {}
 
   async create(userId: string, dto: CreateHouseholdDto) {
     return this.prisma.$transaction(async (tx) => {
@@ -26,7 +30,6 @@ export class HouseholdsService {
         include: { members: true },
       });
 
-      // Create household wallet
       await tx.wallet.create({
         data: {
           type: 'household',
@@ -40,21 +43,35 @@ export class HouseholdsService {
   }
 
   async join(userId: string, dto: JoinHouseholdDto) {
+    const rawCode = dto.inviteCode.trim();
+
+    // Keep the original household UUID invite code working for older data.
     const household = await this.prisma.household.findUnique({
-      where: { inviteCode: dto.inviteCode },
-    });
-    if (!household) throw new NotFoundException('Invalid invite code');
-
-    const existing = await this.prisma.householdMember.findUnique({
-      where: { householdId_userId: { householdId: household.id, userId } },
-    });
-    if (existing) throw new ConflictException('Already a member of this household');
-
-    await this.prisma.householdMember.create({
-      data: { householdId: household.id, userId, role: 'member' },
+      where: { inviteCode: rawCode },
     });
 
-    return this.findById(household.id, userId);
+    if (household) {
+      const existing = await this.prisma.householdMember.findUnique({
+        where: { householdId_userId: { householdId: household.id, userId } },
+      });
+      if (existing) throw new ConflictException('Already a member of this household');
+
+      await this.prisma.householdMember.create({
+        data: { householdId: household.id, userId, role: 'member' },
+      });
+
+      return this.findById(household.id, userId);
+    }
+
+    // Current Android invites use short codes managed by InvitesService.
+    // Preview first so a Basket invite cannot be redeemed through the household join surface.
+    const modern = await this.invites.preview(userId, rawCode);
+    if (modern.targetType !== 'household' || !modern.householdId) {
+      throw new BadRequestException('This invite is not for a shared space.');
+    }
+
+    await this.invites.redeem(userId, rawCode);
+    return this.findById(modern.householdId, userId);
   }
 
   async findById(id: string, requestingUserId?: string) {
@@ -107,7 +124,6 @@ export class HouseholdsService {
     });
     if (!household) throw new NotFoundException('Household not found');
 
-    // Get all ledger entries for this wallet
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
