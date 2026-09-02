@@ -6,32 +6,40 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Autorenew
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tukutuku.synced.app.BillsViewModel
+import com.tukutuku.synced.app.RecurringBillsViewModel
 import com.tukutuku.synced.data.model.CreateBillRequest
 import com.tukutuku.synced.data.model.FINANCE_CATEGORIES
 import com.tukutuku.synced.ui.components.*
 import com.tukutuku.synced.ui.theme.*
+import com.tukutuku.synced.worker.SmsSyncWorker
 
 @Composable
 fun BillsScreen(
     onBack: () -> Unit,
     vm: BillsViewModel = hiltViewModel(),
+    recurringVm: RecurringBillsViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val recurringState by recurringVm.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showCreate by remember { mutableStateOf(false) }
+    var autoCreate by remember { mutableStateOf(SmsSyncWorker.isAutoCreateRecurringBillsEnabled(context)) }
     val data = state.data
+
+    LaunchedEffect(Unit) {
+        recurringVm.scan(autoCreate = autoCreate) { if (autoCreate) vm.refresh() }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -44,7 +52,7 @@ fun BillsScreen(
                 Spacer(Modifier.width(4.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Bills & recurring", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Ink)
-                    Text("Know what is due before it surprises you.", color = Muted)
+                    Text("Known bills plus patterns Synced can see coming.", color = Muted)
                 }
                 FilledIconButton(onClick = { showCreate = true }) { Icon(Icons.Outlined.Add, "Add bill") }
             }
@@ -62,7 +70,7 @@ fun BillsScreen(
                             fontWeight = FontWeight.Black,
                         )
                         Text(
-                            "${data.summary.count} bill${if (data.summary.count == 1) "" else "s"} and recurring charge${if (data.summary.count == 1) "" else "s"}",
+                            "${data.summary.count} known obligation${if (data.summary.count == 1) "" else "s"}",
                             color = androidx.compose.ui.graphics.Color.White.copy(alpha = .68f),
                         )
                         Spacer(Modifier.height(16.dp))
@@ -75,13 +83,140 @@ fun BillsScreen(
             }
         }
 
+        item {
+            SyncedCard(containerColor = SecondarySoft) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Surface(shape = MaterialTheme.shapes.medium, color = Surface) {
+                        Icon(Icons.Outlined.AutoAwesome, null, tint = Secondary, modifier = Modifier.padding(11.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Recurring payment intelligence", fontWeight = FontWeight.Bold, color = Ink)
+                        Text(
+                            "Synced checks structured transaction history for repeat payments, timing and amount consistency. It never needs raw SMS text for this analysis.",
+                            color = Muted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-create high-confidence bills", fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text("Only bill-like patterns at 86%+ confidence. Inferred bills stay labelled.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = autoCreate,
+                        onCheckedChange = {
+                            autoCreate = it
+                            SmsSyncWorker.setAutoCreateRecurringBills(context, it)
+                            if (it) recurringVm.scan(autoCreate = true) { vm.refresh() }
+                        },
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { recurringVm.scan(autoCreate = autoCreate) { vm.refresh() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !recurringState.loading,
+                ) {
+                    if (recurringState.loading) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Outlined.QueryStats, null)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (autoCreate) "Analyse and create confirmed patterns" else "Analyse recurring payments")
+                }
+            }
+        }
+
+        recurringState.data?.let { discovery ->
+            val newCandidates = discovery.candidates.filterNot { it.alreadyTracked }
+            if (discovery.created.isNotEmpty()) {
+                item {
+                    SyncedCard(containerColor = SuccessSoft) {
+                        Text("${discovery.created.size} recurring bill${if (discovery.created.size == 1) " was" else "s were"} created from high-confidence patterns.", fontWeight = FontWeight.Bold, color = Success)
+                        Text("They now feed due-date intelligence, runway and forecasts.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (newCandidates.isNotEmpty()) {
+                item { SectionTitle("Patterns Synced found") }
+                items(newCandidates, key = { it.fingerprint }) { candidate ->
+                    SyncedCard {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Outlined.Repeat, null, tint = Primary)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(candidate.name, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
+                                    StatusPill("${(candidate.confidence * 100).toInt()}%", if (candidate.confidence >= .86) "success" else "primary")
+                                }
+                                Text(
+                                    "${candidate.occurrences} payments • about every ${candidate.cadenceDays} days • ${candidate.amountVariationPercent}% amount variation",
+                                    color = Muted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Spacer(Modifier.height(7.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(money(candidate.amount), fontWeight = FontWeight.Black, color = Ink)
+                                    Text("Next ~ ${shortDate(candidate.nextDueDate)}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("${categoryLabel(candidate.category)} • ${candidate.billingCycle} • inferred", color = Muted, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        if (candidate.autoCreateEligible && !autoCreate) {
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    vm.create(
+                                        CreateBillRequest(
+                                            name = candidate.name,
+                                            category = candidate.category,
+                                            amount = candidate.amount,
+                                            dueDate = candidate.nextDueDate.take(10),
+                                            recurring = true,
+                                            billingCycle = candidate.billingCycle,
+                                            provider = "${candidate.name} · inferred by Synced",
+                                            accountRef = "inferred:${candidate.fingerprint}",
+                                        ),
+                                    ) { if (it.isSuccess) recurringVm.scan(false) }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.Outlined.AddTask, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Create recurring bill")
+                            }
+                        } else if (!candidate.autoCreateEligible) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Pattern detected, but Synced will not auto-create this category as a bill.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            } else if (discovery.analysedTransactions > 0 && discovery.created.isEmpty()) {
+                item {
+                    Text(
+                        "Synced analysed ${discovery.analysedTransactions} transactions. No new bill-like recurring pattern has enough evidence yet.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+
+        recurringState.error?.let { error ->
+            item { Text(error, color = Error, style = MaterialTheme.typography.bodySmall) }
+        }
+
         if (state.loading) {
             item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         } else if (data == null || (data.bills.isEmpty() && data.subscriptions.isEmpty())) {
             item {
                 EmptyState(
                     "No upcoming obligations",
-                    "Add rent, utilities, school fees or other recurring bills. Synced will bring them into your plan, forecast and recommendations.",
+                    "Add a bill manually, or let recurring-payment intelligence learn from your transaction history.",
                     "Add a bill",
                     { showCreate = true },
                 )
@@ -99,7 +234,8 @@ fun BillsScreen(
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(bill.name, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
-                                    if (bill.recurring) StatusPill("Recurring", "primary")
+                                    if (bill.accountRef?.startsWith("inferred:") == true) StatusPill("Inferred", "primary")
+                                    else if (bill.recurring) StatusPill("Recurring", "primary")
                                 }
                                 Text(
                                     listOfNotNull(categoryLabel(bill.category), bill.provider).joinToString(" • "),
@@ -132,11 +268,7 @@ fun BillsScreen(
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(subscription.name, fontWeight = FontWeight.Bold, color = Ink)
-                                Text(
-                                    "${categoryLabel(subscription.category)} • ${subscription.billingCycle}",
-                                    color = Muted,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Text("${categoryLabel(subscription.category)} • ${subscription.billingCycle}", color = Muted, style = MaterialTheme.typography.bodySmall)
                                 Text("Next ${shortDate(subscription.nextDueDate)}", color = Muted, style = MaterialTheme.typography.bodySmall)
                             }
                             Column(horizontalAlignment = Alignment.End) {
