@@ -46,6 +46,7 @@ class SmsSyncWorker @AssistedInject constructor(
                         "processed" to 0,
                         "skipped" to 0,
                         "rescanDays" to RESCAN_DAYS,
+                        "internalTransfers" to scan.internalTransferPairs,
                     ),
                 )
             }
@@ -68,6 +69,7 @@ class SmsSyncWorker @AssistedInject constructor(
                     "processed" to processed,
                     "skipped" to skipped,
                     "rescanDays" to RESCAN_DAYS,
+                    "internalTransfers" to scan.internalTransferPairs,
                 ),
             )
         } catch (e: Exception) {
