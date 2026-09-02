@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   ConflictException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { InvitesService } from '../invites/invites.service';
@@ -13,7 +14,7 @@ import { CreateHouseholdDto, JoinHouseholdDto, UpdateHouseholdDto } from './dto/
 export class HouseholdsService {
   constructor(
     private prisma: PrismaService,
-    private invites: InvitesService,
+    @Optional() private invites?: InvitesService,
   ) {}
 
   async create(userId: string, dto: CreateHouseholdDto) {
@@ -68,6 +69,7 @@ export class HouseholdsService {
       return this.findById(household.id, userId);
     }
 
+    if (!this.invites) throw new NotFoundException('Invalid invite code');
     const modern = await this.invites.preview(userId, rawCode);
     if (modern.targetType !== 'household' || !modern.householdId) {
       throw new BadRequestException('This invite is not for a shared space.');
