@@ -19,11 +19,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.getWorkInfoByIdFlow
 import com.tukutuku.synced.ui.components.SyncedCard
 import com.tukutuku.synced.ui.theme.*
 import com.tukutuku.synced.worker.SmsSyncWorker
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SmsSyncScreen(onBack: () -> Unit) {
@@ -37,7 +39,20 @@ fun SmsSyncScreen(onBack: () -> Unit) {
     var workId by rememberSaveable { mutableStateOf<String?>(null) }
     val workInfo by produceState<WorkInfo?>(initialValue = null, key1 = workId) {
         val id = workId?.let(UUID::fromString) ?: return@produceState
-        WorkManager.getInstance(context).getWorkInfoByIdFlow(id).collect { value = it }
+        val workManager = WorkManager.getInstance(context)
+        while (true) {
+            val info = withContext(Dispatchers.IO) { workManager.getWorkInfoById(id).get() }
+            value = info
+            if (
+                info == null ||
+                info.state == WorkInfo.State.SUCCEEDED ||
+                info.state == WorkInfo.State.FAILED ||
+                info.state == WorkInfo.State.CANCELLED
+            ) {
+                break
+            }
+            delay(400)
+        }
     }
     val syncing = workInfo?.state == WorkInfo.State.ENQUEUED ||
         workInfo?.state == WorkInfo.State.RUNNING ||
