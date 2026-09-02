@@ -57,7 +57,7 @@ object SmsTransactionParser {
             merchantGroup = 2,
         ),
         Rule(
-            Regex("(?i)\\byou paid\\s+$CURRENCY\\s*$AMOUNT\\s+to\\s+(.+?)(?:\\.|,|$)"),
+            Regex("(?i)\\byou (?:have )?paid\\s+$CURRENCY\\s*$AMOUNT\\s+to\\s+(.+?)(?:\\.|,|$)"),
             "debit",
             "Payment to",
             merchantGroup = 2,
