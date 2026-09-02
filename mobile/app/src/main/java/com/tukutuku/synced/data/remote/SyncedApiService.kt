@@ -16,6 +16,10 @@ interface SyncedApiService {
     @GET("plans/current") suspend fun currentPlan(): ApiEnvelope<Plan?>
     @POST("plans") suspend fun createPlan(@Body body: CreatePlanRequest): ApiEnvelope<Plan>
 
+    @GET("bills/upcoming") suspend fun upcomingBills(@Query("days") days: Int = 30): ApiEnvelope<UpcomingBills>
+    @GET("forecasts/personal") suspend fun personalForecast(): ApiEnvelope<PersonalForecast?>
+    @GET("analytics/personal") suspend fun personalAnalytics(): ApiEnvelope<PersonalAnalytics?>
+
     @GET("baskets") suspend fun baskets(): ApiEnvelope<List<Basket>>
     @POST("baskets") suspend fun createBasket(@Body body: CreateBasketRequest): ApiEnvelope<Basket>
     @POST("baskets/{id}/contributions") suspend fun contribute(@Path("id") id: String, @Body body: ContributionRequest): ApiEnvelope<JsonElementEnvelope>

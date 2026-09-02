@@ -37,6 +37,15 @@ class FinanceRepository @Inject constructor(
     suspend fun createPlan(body: CreatePlanRequest): Plan =
         api.createPlan(body).data ?: error("Plan was not created")
 
+    suspend fun upcomingBills(days: Int = 30): UpcomingBills =
+        api.upcomingBills(days).data ?: UpcomingBills()
+
+    suspend fun personalForecast(): PersonalForecast? =
+        api.personalForecast().data
+
+    suspend fun personalAnalytics(): PersonalAnalytics? =
+        api.personalAnalytics().data
+
     suspend fun baskets(): List<Basket> = api.baskets().data.orEmpty()
 
     suspend fun createBasket(body: CreateBasketRequest): Basket =
