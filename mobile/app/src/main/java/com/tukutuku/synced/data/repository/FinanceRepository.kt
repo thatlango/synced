@@ -21,13 +21,25 @@ class FinanceRepository @Inject constructor(
         return summary
     }
 
-    suspend fun transactions(): List<Transaction> = try {
-        val rows = api.transactions().data?.data.orEmpty()
-        transactionDao.upsert(rows.map(CachedTransaction::from))
-        rows
-    } catch (_: Exception) {
-        transactionDao.recent().map { it.model() }
+    suspend fun transactions(
+        scope: String = "all",
+        walletId: String? = null,
+    ): List<Transaction> {
+        if (walletId != null) {
+            return api.transactions(scope = scope, walletId = walletId).data?.data.orEmpty()
+        }
+
+        return try {
+            val rows = api.transactions(scope = scope).data?.data.orEmpty()
+            if (scope == "all") transactionDao.upsert(rows.map(CachedTransaction::from))
+            rows
+        } catch (error: Exception) {
+            if (scope == "all") transactionDao.recent().map { it.model() } else throw error
+        }
     }
+
+    suspend fun sharedTransactions(walletId: String): List<Transaction> =
+        transactions(scope = "household", walletId = walletId)
 
     suspend fun createTransaction(body: CreateTransactionRequest): Transaction =
         api.createTransaction(body).data ?: error("Transaction was not created")
