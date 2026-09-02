@@ -3,7 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IngestionService } from './ingestion.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { IsString, IsNotEmpty, IsArray, IsNumber, IsPositive, IsIn, IsOptional, ValidateNested, MaxLength, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsNumber, IsPositive, IsIn, IsOptional, ValidateNested, MaxLength, Min, Max, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -84,6 +84,20 @@ class IngestCandidateBulkDto {
   candidates: StructuredSmsCandidateDto[];
 }
 
+class ReconcileSmsHistoryDto {
+  @ApiProperty({ example: 'wallet-id-here' })
+  @IsString()
+  @IsNotEmpty()
+  walletId: string;
+
+  @ApiProperty({ type: [String], description: 'One-way SHA-256 fingerprints only; raw SMS text is never sent.' })
+  @IsArray()
+  @ArrayMaxSize(2500)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  referenceIds: string[];
+}
+
 class FetchMoMoDto {
   @ApiProperty({ example: 'wallet-id-here' })
   @IsString()
@@ -115,6 +129,12 @@ export class IngestionController {
   @ApiOperation({ summary: 'Ingest locally parsed financial SMS candidates without receiving raw message text' })
   ingestCandidateBulk(@CurrentUser('id') userId: string, @Body() dto: IngestCandidateBulkDto) {
     return this.ingestionService.ingestCandidateBulk(userId, dto.walletId, dto.candidates);
+  }
+
+  @Post('sms/reconcile')
+  @ApiOperation({ summary: 'Remove previously imported false SMS rows by one-way fingerprint and rebuild the personal ledger' })
+  reconcileSmsHistory(@CurrentUser('id') userId: string, @Body() dto: ReconcileSmsHistoryDto) {
+    return this.ingestionService.reconcileSmsHistory(userId, dto.walletId, dto.referenceIds);
   }
 
   @Post('sms/preview')

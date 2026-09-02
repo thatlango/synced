@@ -23,3 +23,19 @@ describe('IngestionService structured SMS bulk contract', () => {
     expect(result.results).toHaveLength(3);
   });
 });
+
+
+describe('IngestionService confirmed SMS movement rules', () => {
+  it('rejects prompts and reminders even when they contain transaction-like amounts', () => {
+    const service = new IngestionService({} as any, {} as any, {} as any);
+    expect(service.parseSms('Payment request: UGX 25,000. Enter your PIN to approve this payment.')).toBeNull();
+    expect(service.parseSms('Bill reminder: UGX 40,000 is due tomorrow and your account will be debited.')).toBeNull();
+  });
+
+  it('still accepts confirmed received money', () => {
+    const service = new IngestionService({} as any, {} as any, {} as any);
+    const parsed = service.parseSms('You have received UGX 10,000 from Jane Doe.');
+    expect(parsed?.type).toBe('credit');
+    expect(parsed?.amount).toBe(10000);
+  });
+});

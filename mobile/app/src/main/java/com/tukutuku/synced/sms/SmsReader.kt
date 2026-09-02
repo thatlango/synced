@@ -15,6 +15,7 @@ data class SmsScanResult(
     val newestTimestamp: Long,
     val scanned: Int,
     val internalTransferPairs: Int = 0,
+    val cleanupReferenceIds: List<String> = emptyList(),
 )
 
 @Singleton
@@ -27,6 +28,7 @@ class SmsReader @Inject constructor(
         }
 
         val rows = mutableListOf<StructuredSmsCandidate>()
+        val cleanupReferences = mutableListOf<String>()
         var newest = since
         var scanned = 0
         val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
@@ -48,7 +50,12 @@ class SmsReader @Inject constructor(
                 val body = if (bodyIndex >= 0) cursor.getString(bodyIndex).orEmpty() else ""
                 val timestamp = if (dateIndex >= 0) cursor.getLong(dateIndex) else 0L
                 newest = maxOf(newest, timestamp)
-                SmsTransactionParser.parse(sender, body, timestamp)?.let(rows::add)
+                val parsed = SmsTransactionParser.parse(sender, body, timestamp)
+                if (parsed != null) {
+                    rows += parsed
+                } else if (SmsTransactionParser.isExplicitNonMovement(body)) {
+                    cleanupReferences += SmsTransactionParser.fingerprint(sender, body, timestamp)
+                }
             }
         }
 
@@ -58,6 +65,7 @@ class SmsReader @Inject constructor(
             newestTimestamp = newest,
             scanned = scanned,
             internalTransferPairs = reconciled.internalTransferPairs,
+            cleanupReferenceIds = (cleanupReferences + reconciled.reconciledReferenceIds).distinct(),
         )
     }
 }
