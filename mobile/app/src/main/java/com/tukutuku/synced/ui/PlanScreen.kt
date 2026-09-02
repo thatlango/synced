@@ -52,9 +52,14 @@ fun PlanScreen(vm: PlanViewModel = hiltViewModel()) {
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Forecast signal", color = Muted, style = MaterialTheme.typography.labelMedium)
+                            Text("Cash runway", color = Muted, style = MaterialTheme.typography.labelMedium)
                             Text(
-                                if (f.daysUntilZero >= 999) "Your current balance has positive runway" else "About ${f.daysUntilZero} days of runway at recent spending",
+                                when {
+                                    f.currentBalance <= 0 -> "No cash runway from the recorded wallet balance"
+                                    f.avgMonthlySpend <= 0 -> "More spending history is needed for a runway estimate"
+                                    f.daysUntilZero >= 999 -> "Recorded cash has positive runway at recent spending"
+                                    else -> "About ${f.daysUntilZero} days at recent spending"
+                                },
                                 color = Ink,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -62,9 +67,24 @@ fun PlanScreen(vm: PlanViewModel = hiltViewModel()) {
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(Modifier.fillMaxWidth()) {
-                        ForecastMetric("Average income", money(f.avgMonthlyIncome), Modifier.weight(1f))
-                        ForecastMetric("Average spend", money(f.avgMonthlySpend), Modifier.weight(1f))
+                        ForecastMetric("Wallet balance", money(f.currentBalance), Modifier.weight(1f))
+                        ForecastMetric("Recent monthly spend", money(f.avgMonthlySpend), Modifier.weight(1f))
                     }
+                    if (f.upcomingObligations > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "${money(f.upcomingObligations)} due in the next 30 days is reserved before cash runway is calculated.",
+                            color = Ink,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Runway uses your recorded wallet balance and the last ${f.historyWindowMonths} months of ledger spending. It does not use the expected-income assumption in your monthly plan.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
@@ -123,7 +143,7 @@ fun PlanScreen(vm: PlanViewModel = hiltViewModel()) {
                                 color = androidx.compose.ui.graphics.Color.White,
                             )
                             Text(
-                                "left from ${money(plan.expectedIncome)} expected income",
+                                "left from ${money(plan.expectedIncome)} expected income assumption",
                                 color = androidx.compose.ui.graphics.Color.White.copy(alpha = .7f),
                             )
                             Spacer(Modifier.height(14.dp))
