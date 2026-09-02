@@ -2,11 +2,11 @@ package com.tukutuku.synced.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -21,9 +21,24 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tukutuku.synced.app.BillsViewModel
 import com.tukutuku.synced.data.model.CreateBillRequest
-import com.tukutuku.synced.data.model.FINANCE_CATEGORIES
 import com.tukutuku.synced.ui.components.*
 import com.tukutuku.synced.ui.theme.*
+
+private val BILL_CATEGORY_OPTIONS = listOf(
+    "rent",
+    "utilities",
+    "school_fees",
+    "mobile_data",
+    "subscriptions",
+    "healthcare",
+    "transport",
+    "food",
+    "fuel",
+    "shopping",
+    "entertainment",
+    "bill_payment",
+    "other",
+)
 
 @Composable
 fun BillsScreen(
@@ -32,7 +47,14 @@ fun BillsScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    var createError by remember { mutableStateOf<String?>(null) }
     val data = state.data
+
+    fun openCreate() {
+        createError = null
+        showCreate = true
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -47,7 +69,7 @@ fun BillsScreen(
                     Text("Bills & recurring", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Ink)
                     Text("Synced also learns recurring obligations from your payment history.", color = Muted)
                 }
-                FilledIconButton(onClick = { showCreate = true }) { Icon(Icons.Outlined.Add, "Add bill") }
+                FilledIconButton(onClick = { openCreate() }) { Icon(Icons.Outlined.Add, "Add bill") }
             }
         }
 
@@ -169,7 +191,7 @@ fun BillsScreen(
                     else
                         "Add rent, utilities, school fees or sync transaction history. Synced will detect recurring obligations and bring them into your forecast.",
                     "Add a bill",
-                    { showCreate = true },
+                    { openCreate() },
                 )
             }
         } else {
@@ -246,8 +268,29 @@ fun BillsScreen(
 
     if (showCreate) {
         CreateBillDialog(
-            onDismiss = { showCreate = false },
-            onCreate = { request -> vm.create(request) { if (it.isSuccess) showCreate = false } },
+            onDismiss = {
+                if (!creating) {
+                    showCreate = false
+                    createError = null
+                }
+            },
+            saving = creating,
+            error = createError,
+            onCreate = { request ->
+                creating = true
+                createError = null
+                vm.create(request) { result ->
+                    creating = false
+                    result
+                        .onSuccess {
+                            showCreate = false
+                            createError = null
+                        }
+                        .onFailure {
+                            createError = it.message ?: "Bill could not be saved. Check the details and try again."
+                        }
+                }
+            },
         )
     }
 }
@@ -263,33 +306,44 @@ private fun BillMetric(label: String, value: String, modifier: Modifier) {
 @Composable
 private fun CreateBillDialog(
     onDismiss: () -> Unit,
+    saving: Boolean,
+    error: String?,
     onCreate: (CreateBillRequest) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var dueDate by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("utilities") }
+    var categoryMenu by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf("") }
     var accountRef by remember { mutableStateOf("") }
     var recurring by remember { mutableStateOf(false) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = {
             Column {
                 Text("Add bill", fontWeight = FontWeight.Black)
-                Text("Bills feed your plan, forecast and recommendations.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Bills feed your plan, cash forecast and recommendations.", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Bill name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("Bill name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !saving,
+                )
                 OutlinedTextField(
                     amount,
                     { amount = it.filter { c -> c.isDigit() || c == '.' } },
                     label = { Text("Amount (UGX)") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    enabled = !saving,
                 )
                 OutlinedTextField(
                     dueDate,
@@ -298,22 +352,64 @@ private fun CreateBillDialog(
                     supportingText = { Text("YYYY-MM-DD") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    enabled = !saving,
                 )
                 Text("Category", color = Muted, style = MaterialTheme.typography.labelMedium)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    items(FINANCE_CATEGORIES.filterNot { it in listOf("salary", "transfer", "savings") }) { item ->
-                        FilterChip(selected = category == item, onClick = { category = item }, label = { Text(categoryLabel(item)) })
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { categoryMenu = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !saving,
+                    ) {
+                        Text(categoryLabel(category), modifier = Modifier.weight(1f))
+                        Icon(Icons.Outlined.ArrowDropDown, contentDescription = "Choose bill category")
+                    }
+                    DropdownMenu(
+                        expanded = categoryMenu,
+                        onDismissRequest = { categoryMenu = false },
+                    ) {
+                        BILL_CATEGORY_OPTIONS.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(categoryLabel(item)) },
+                                onClick = {
+                                    category = item
+                                    categoryMenu = false
+                                },
+                            )
+                        }
                     }
                 }
-                OutlinedTextField(provider, { provider = it }, label = { Text("Provider (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(accountRef, { accountRef = it }, label = { Text("Account / reference (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Text(
+                    "Selected category: ${categoryLabel(category)}. This is saved with the bill and used in obligations, forecasts and analysis.",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    provider,
+                    { provider = it },
+                    label = { Text("Provider (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !saving,
+                )
+                OutlinedTextField(
+                    accountRef,
+                    { accountRef = it },
+                    label = { Text("Account / reference (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !saving,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = recurring, onCheckedChange = { recurring = it })
+                    Switch(checked = recurring, onCheckedChange = { recurring = it }, enabled = !saving)
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text("Recurring bill", fontWeight = FontWeight.SemiBold, color = Ink)
                         Text("Treat this as a monthly obligation", color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
+                }
+                error?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = Error, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                 }
             }
         },
@@ -333,9 +429,15 @@ private fun CreateBillDialog(
                         ),
                     )
                 },
-                enabled = name.length >= 2 && (amount.toDoubleOrNull() ?: 0.0) > 0 && Regex("\\d{4}-\\d{2}-\\d{2}").matches(dueDate),
-            ) { Text("Save bill") }
+                enabled = !saving &&
+                    name.length >= 2 &&
+                    (amount.toDoubleOrNull() ?: 0.0) > 0 &&
+                    Regex("\\d{4}-\\d{2}-\\d{2}").matches(dueDate) &&
+                    category in BILL_CATEGORY_OPTIONS,
+            ) { Text(if (saving) "Saving…" else "Save bill") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancel") }
+        },
     )
 }
