@@ -16,8 +16,13 @@ import com.tukutuku.synced.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
 
-fun money(v: Double, currency: String = "UGX"): String =
-    "$currency ${NumberFormat.getNumberInstance(Locale.US).format(v)}"
+fun money(v: Double, currency: String = "UGX"): String {
+    val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
+        minimumFractionDigits = 0
+        maximumFractionDigits = if (currency.equals("UGX", ignoreCase = true)) 0 else 2
+    }
+    return "$currency ${formatter.format(v)}"
+}
 
 fun categoryLabel(value: String?): String = when (value) {
     "school_fees" -> "School fees"
