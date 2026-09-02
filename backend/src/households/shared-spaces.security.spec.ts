@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { BillsService } from '../bills/bills.service';
 import { InvitesService } from '../invites/invites.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { HouseholdsService } from './households.service';
@@ -134,5 +135,23 @@ describe('Shared spaces security and money routing', () => {
     );
     expect(redemptionCreate).not.toHaveBeenCalled();
     expect(inviteUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not let a non-member mutate a shared-space bill', async () => {
+    const prisma = {
+      bill: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'bill-1',
+          ownerType: 'household',
+          householdId: 'space-1',
+        }),
+      },
+      householdMember: { findUnique: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn(),
+    } as any;
+    const service = new BillsService(prisma, { detect: jest.fn() } as any);
+
+    await expect(service.markPaid('bill-1', 'outsider')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
