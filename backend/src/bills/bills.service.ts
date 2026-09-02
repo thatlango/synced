@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateBillDto } from './dto/bill.dto';
 import { RecurringDetectionService } from './recurring-detection.service';
@@ -12,11 +17,17 @@ export class BillsService {
   ) {}
 
   async create(userId: string, dto: CreateBillDto) {
+    const ownerType = dto.ownerType || 'user';
+    if (ownerType === 'household') {
+      if (!dto.householdId) throw new BadRequestException('Shared-space id is required');
+      await this.requireHouseholdMember(dto.householdId, userId);
+    }
+
     return this.prisma.bill.create({
       data: {
-        ownerType: (dto.ownerType as any) || 'user',
-        userId: dto.ownerType === 'household' ? null : userId,
-        householdId: dto.ownerType === 'household' ? dto.householdId : null,
+        ownerType: ownerType as any,
+        userId: ownerType === 'household' ? null : userId,
+        householdId: ownerType === 'household' ? dto.householdId : null,
         name: dto.name,
         category: (dto.category as any) || 'utilities',
         amount: dto.amount,
@@ -105,9 +116,10 @@ export class BillsService {
     return this.recurringDetection.detect(userId, autoCreate);
   }
 
-  async markPaid(id: string) {
+  async markPaid(id: string, userId: string) {
     const bill = await this.prisma.bill.findUnique({ where: { id } });
     if (!bill) throw new NotFoundException('Bill not found');
+    await this.requireBillAccess(bill, userId);
 
     return this.prisma.$transaction(async (tx) => {
       const paid = await tx.bill.update({
@@ -138,10 +150,28 @@ export class BillsService {
     });
   }
 
-  async findById(id: string) {
+  async findById(id: string, userId: string) {
     const bill = await this.prisma.bill.findUnique({ where: { id } });
     if (!bill) throw new NotFoundException('Bill not found');
+    await this.requireBillAccess(bill, userId);
     return bill;
+  }
+
+  private async requireBillAccess(bill: any, userId: string) {
+    if (bill.ownerType === 'user') {
+      if (bill.userId !== userId) throw new ForbiddenException('Bill access denied');
+      return;
+    }
+    if (!bill.householdId) throw new ForbiddenException('Bill access denied');
+    await this.requireHouseholdMember(bill.householdId, userId);
+  }
+
+  private async requireHouseholdMember(householdId: string, userId: string) {
+    const membership = await this.prisma.householdMember.findUnique({
+      where: { householdId_userId: { householdId, userId } },
+    });
+    if (!membership) throw new ForbiddenException('Shared-space membership required');
+    return membership;
   }
 }
 
