@@ -22,37 +22,40 @@ export class HouseholdsController {
   constructor(private readonly householdsService: HouseholdsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new household' })
+  @ApiOperation({ summary: 'Create a new shared space' })
   create(@CurrentUser('id') userId: string, @Body() dto: CreateHouseholdDto) {
     return this.householdsService.create(userId, dto);
   }
 
   @Post('join')
-  @ApiOperation({ summary: 'Join household via invite code' })
+  @ApiOperation({ summary: 'Join shared space via invite code' })
   join(@CurrentUser('id') userId: string, @Body() dto: JoinHouseholdDto) {
     return this.householdsService.join(userId, dto);
   }
 
   @Get('mine')
-  @ApiOperation({ summary: 'Get all households I belong to' })
+  @ApiOperation({ summary: 'Get all shared spaces I belong to' })
   getMyHouseholds(@CurrentUser('id') userId: string) {
     return this.householdsService.getMyHouseholds(userId);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get household details' })
+  @ApiOperation({ summary: 'Get shared-space details' })
   findById(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.householdsService.findById(id, userId);
   }
 
   @Get(':id/financial-summary')
-  @ApiOperation({ summary: 'Get household financial summary with per-member breakdown' })
-  getFinancialSummary(@Param('id') id: string) {
-    return this.householdsService.getHouseholdFinancialSummary(id);
+  @ApiOperation({ summary: 'Get shared-space financial summary with per-member breakdown' })
+  getFinancialSummary(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.householdsService.getHouseholdFinancialSummary(id, userId);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update household (admin only)' })
+  @ApiOperation({ summary: 'Update shared space (admin only)' })
   update(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
@@ -62,7 +65,7 @@ export class HouseholdsController {
   }
 
   @Delete(':id/leave')
-  @ApiOperation({ summary: 'Leave a household' })
+  @ApiOperation({ summary: 'Leave a shared space' })
   leave(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.householdsService.leave(id, userId);
   }
