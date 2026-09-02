@@ -22,6 +22,17 @@ object SmsTransactionParser {
         val merchant: String?,
     )
 
+    // These messages mention money but do not prove that money moved. They are
+    // intentionally rejected before transaction rules are evaluated.
+    private val nonMovementPatterns = listOf(
+        Regex("(?i)\\b(?:payment|transaction|debit|credit|withdrawal|deposit)\\s+(?:request|prompt|reminder|pending|initiated|awaiting|scheduled)\\b"),
+        Regex("(?i)\\b(?:request to pay|payment request|collect request|please pay|amount due|due date|bill reminder|invoice reminder)\\b"),
+        Regex("(?i)\\b(?:enter|use)\\s+(?:your\\s+)?(?:pin|otp)\\b|\\bone[- ]time password\\b|\\bverification code\\b"),
+        Regex("(?i)\\b(?:authori[sz]e|approve)\\s+(?:this|the|a)?\\s*(?:payment|transaction|debit|transfer)\\b"),
+        Regex("(?i)\\b(?:will be|may be|can be)\\s+(?:debited|credited|charged)\\b"),
+        Regex("(?i)\\b(?:failed|declined|unsuccessful|cancelled|canceled|reversal pending)\\b"),
+    )
+
     private val rules = listOf(
         Rule(
             Regex("(?i)\\byou have received\\s+$CURRENCY\\s*$AMOUNT\\s+from\\s+(.+?)(?:\\.|,|$)"),
@@ -95,22 +106,46 @@ object SmsTransactionParser {
             "Data bundle purchase",
         ),
         Rule(
-            Regex("(?i)\\b(?:Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)(?:\\s+Bank)?[^\\n]{0,40}?$CURRENCY\\s*$AMOUNT\\s+(?:has been\\s+)?credited\\b"),
+            Regex("(?i)\\b(Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)(?:\\s+Bank)?[^\\n]{0,60}?$CURRENCY\\s*$AMOUNT\\s+(?:has been\\s+)?credited\\b"),
             "credit",
-            "Bank credit",
+            "Bank credit at",
+            amountGroup = 2,
+            merchantGroup = 1,
         ),
         Rule(
-            Regex("(?i)\\b(?:Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)(?:\\s+Bank)?[^\\n]{0,40}?$CURRENCY\\s*$AMOUNT\\s+(?:has been\\s+)?debited\\b"),
+            Regex("(?i)\\b(Stanbic|DFCU|Equity|Centenary|PostBank|Absa|Standard Chartered)(?:\\s+Bank)?[^\\n]{0,60}?$CURRENCY\\s*$AMOUNT\\s+(?:has been\\s+)?debited\\b"),
             "debit",
-            "Bank debit",
+            "Bank debit at",
+            amountGroup = 2,
+            merchantGroup = 1,
         ),
         Rule(
-            Regex("(?i)\\b$CURRENCY\\s*$AMOUNT\\s+has been credited\\b"),
+            Regex("(?i)\\b(?:your\\s+)?(?:account|acct|a/c)[^\\n]{0,32}?\\b(?:has\\s+been\\s+)?credited(?:\\s+with)?\\s+$CURRENCY\\s*$AMOUNT\\b"),
+            "credit",
+            "Account credited",
+        ),
+        Rule(
+            Regex("(?i)\\b(?:your\\s+)?(?:account|acct|a/c)[^\\n]{0,32}?\\b(?:has\\s+been\\s+)?debited(?:\\s+with)?\\s+$CURRENCY\\s*$AMOUNT\\b"),
+            "debit",
+            "Account debited",
+        ),
+        Rule(
+            Regex("(?i)\\byou have been credited(?:\\s+with)?\\s+$CURRENCY\\s*$AMOUNT\\b"),
+            "credit",
+            "Account credited",
+        ),
+        Rule(
+            Regex("(?i)\\byou have been debited(?:\\s+with)?\\s+$CURRENCY\\s*$AMOUNT\\b"),
+            "debit",
+            "Account debited",
+        ),
+        Rule(
+            Regex("(?i)\\b$CURRENCY\\s*$AMOUNT\\s+(?:has been\\s+)?credited(?:\\s+to\\s+(?:your\\s+)?(?:account|acct|a/c))?\\b"),
             "credit",
             "Credit received",
         ),
         Rule(
-            Regex("(?i)\\b$CURRENCY\\s*$AMOUNT\\s+has been debited\\b"),
+            Regex("(?i)\\b$CURRENCY\\s*$AMOUNT\\s+(?:has been\\s+)?debited(?:\\s+from\\s+(?:your\\s+)?(?:account|acct|a/c))?\\b"),
             "debit",
             "Debit processed",
         ),
@@ -139,9 +174,6 @@ object SmsTransactionParser {
         val normalized = body.lowercase().replace(Regex("\\s+"), " ").trim()
         val referenceId = sha256("${sender.orEmpty()}|$timestamp|$normalized")
 
-        // Only the SMS timestamp is attached to the structured description. The
-        // backend strips this marker before persistence/display and uses it to
-        // preserve the original transaction date for trends and recurrence detection.
         return StructuredSmsCandidate(
             amount = parsed.amount,
             type = parsed.type,
@@ -149,11 +181,13 @@ object SmsTransactionParser {
             merchant = parsed.merchant,
             referenceId = referenceId,
             source = source,
-            confidence = 0.98,
+            confidence = 0.99,
         )
     }
 
     private fun match(body: String): ParsedMatch? {
+        if (body.isBlank() || nonMovementPatterns.any { it.containsMatchIn(body) }) return null
+
         for (rule in rules) {
             val result = rule.regex.find(body) ?: continue
             val rawAmount = result.groupValues.getOrNull(rule.amountGroup).orEmpty()
