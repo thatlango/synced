@@ -3,13 +3,15 @@ package com.tukutuku.synced.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoGraph
-import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -22,175 +24,200 @@ import com.tukutuku.synced.ui.theme.*
 @Composable
 fun PlanScreen(vm: PlanViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val forecast by vm.forecast.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Your money plan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Ink)
-                    Text("Give income a job before it disappears.", color = Muted)
+                    Text("Your money plan", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = Ink)
+                    Text("Give your income a job before it disappears.", color = Muted, style = MaterialTheme.typography.bodyLarge)
                 }
-                TextButton(onClick = { showCreate = true }) {
-                    Text(if (state.data == null) "Create" else "Replace")
-                }
-            }
-        }
-
-        if (forecast.data != null) {
-            val f = forecast.data!!
-            item {
-                SyncedCard(containerColor = PrimarySoft) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = MaterialTheme.shapes.medium, color = Surface) {
-                            Icon(Icons.Outlined.AutoGraph, null, tint = Primary, modifier = Modifier.padding(10.dp))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Cash runway", color = Muted, style = MaterialTheme.typography.labelMedium)
-                            Text(
-                                when {
-                                    f.currentBalance <= 0 -> "No cash runway from the recorded wallet balance"
-                                    f.avgMonthlySpend <= 0 -> "More spending history is needed for a runway estimate"
-                                    f.daysUntilZero >= 999 -> "Recorded cash has positive runway at recent spending"
-                                    else -> "About ${f.daysUntilZero} days at recent spending"
-                                },
-                                color = Ink,
-                                fontWeight = FontWeight.Bold,
-                            )
+                if (state.data != null) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = Surface, shadowElevation = 1.dp) {
+                        IconButton(onClick = { showCreate = true }) {
+                            Icon(Icons.Outlined.Edit, contentDescription = "Replace plan", tint = Primary)
                         }
                     }
-                    Spacer(Modifier.height(14.dp))
-                    Row(Modifier.fillMaxWidth()) {
-                        ForecastMetric("Wallet balance", money(f.currentBalance), Modifier.weight(1f))
-                        ForecastMetric("Recent monthly spend", money(f.avgMonthlySpend), Modifier.weight(1f))
-                    }
-                    if (f.upcomingObligations > 0) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "${money(f.upcomingObligations)} due in the next 30 days is reserved before cash runway is calculated.",
-                            color = Ink,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Runway uses your recorded wallet balance and the last ${f.historyWindowMonths} months of ledger spending. It does not use the expected-income assumption in your monthly plan.",
-                        color = Muted,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
             }
         }
 
         when {
-            state.loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.data == null -> {
-                item {
-                    EmptyState(
-                        title = "Build your first monthly plan",
-                        body = "Set expected income, reserve essentials, make room for transport and food, and protect savings or goals. Synced will compare actual spending against it.",
-                        action = "Create my plan",
-                        onAction = { showCreate = true },
-                    )
-                }
-                item {
-                    SyncedCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Lightbulb, null, tint = Secondary)
-                            Spacer(Modifier.width(10.dp))
-                            Text("What a plan unlocks", fontWeight = FontWeight.Bold, color = Ink)
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Text("• Category-by-category usage and overspend signals", color = Muted)
-                        Text("• A clearer view of money still available", color = Muted)
-                        Text("• Recommendations grounded in your ledger and bills", color = Muted)
-                    }
-                }
+            state.loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = Primary) }
+            state.data == null -> item {
+                EmptyState(
+                    title = "Create your first plan",
+                    body = "Set expected income and reserve money for essentials, goals and everything else.",
+                    action = "Create plan",
+                    onAction = { showCreate = true },
+                )
             }
             else -> {
                 val plan = state.data!!
-                val percent = if (plan.expectedIncome > 0) (plan.spentTotal / plan.expectedIncome * 100).toInt() else 0
+                val available = (plan.expectedIncome - plan.spentTotal).coerceAtLeast(0.0)
+                val spentPercent = if (plan.expectedIncome > 0) {
+                    (plan.spentTotal / plan.expectedIncome * 100).toInt().coerceIn(0, 100)
+                } else 0
+
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = Hero), shape = MaterialTheme.shapes.extraLarge) {
-                        Column(Modifier.fillMaxWidth().padding(22.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(plan.label.uppercase(), color = androidx.compose.ui.graphics.Color.White.copy(alpha = .68f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                StatusPill(
-                                    when {
-                                        percent >= 90 -> "Needs attention"
-                                        percent >= 70 -> "Watch"
-                                        else -> "On track"
+                    GradientCard(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                plan.label.uppercase(),
+                                color = Color.White.copy(alpha = .7f),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Surface(
+                                color = Color.White.copy(alpha = .14f),
+                                shape = RoundedCornerShape(100.dp),
+                            ) {
+                                Text(
+                                    when (plan.health) {
+                                        "watch" -> "Needs attention"
+                                        "healthy" -> "On track"
+                                        else -> "This month"
                                     },
-                                    when {
-                                        percent >= 90 -> "error"
-                                        percent >= 70 -> "warning"
-                                        else -> "success"
-                                    },
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 )
                             }
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                money((plan.expectedIncome - plan.spentTotal).coerceAtLeast(0.0)),
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Black,
-                                color = androidx.compose.ui.graphics.Color.White,
-                            )
-                            Text(
-                                "left from ${money(plan.expectedIncome)} expected income assumption",
-                                color = androidx.compose.ui.graphics.Color.White.copy(alpha = .7f),
-                            )
-                            Spacer(Modifier.height(14.dp))
-                            ProgressBar(percent, if (percent >= 90) Error else if (percent >= 70) Warning else Secondary)
-                            Spacer(Modifier.height(6.dp))
-                            Text("$percent% used", color = androidx.compose.ui.graphics.Color.White.copy(alpha = .65f), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            money(available),
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                        )
+                        Text(
+                            "available from ${money(plan.expectedIncome)} expected income",
+                            color = Color.White.copy(alpha = .72f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        ProgressBar(
+                            value = spentPercent,
+                            color = if (plan.health == "watch") Color(0xFFFFC85A) else Color.White,
+                            trackColor = Color.White.copy(alpha = .18f),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("${money(plan.spentTotal)} used", color = Color.White.copy(alpha = .74f), style = MaterialTheme.typography.labelSmall)
+                            Text("$spentPercent%", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
-                plan.insight?.takeIf { it.isNotBlank() }?.let { item { InsightCard(it) } }
-                item { SectionTitle("Plan by purpose") }
-                items(plan.allocations, key = { it.id ?: it.label }) { allocation ->
-                    val allocationPercent = if (allocation.plannedAmount > 0) (allocation.spentAmount / allocation.plannedAmount * 100).toInt() else 0
-                    SyncedCard {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(allocation.label, fontWeight = FontWeight.Bold, color = Ink)
-                                Text(categoryLabel(allocation.category), color = Muted, style = MaterialTheme.typography.bodySmall)
+
+                plan.insight?.takeIf { it.isNotBlank() }?.let { insight ->
+                    item { InsightCard(insight) }
+                }
+
+                item { SectionTitle("Allocations") }
+
+                if (plan.allocations.isEmpty()) {
+                    item {
+                        SyncedCard {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = RoundedCornerShape(18.dp), color = PrimarySoft) {
+                                    Icon(
+                                        Icons.Outlined.Savings,
+                                        contentDescription = null,
+                                        tint = Primary,
+                                        modifier = Modifier.padding(11.dp),
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("No allocations yet", fontWeight = FontWeight.Bold, color = Ink)
+                                    Text("Split this plan into essentials, goals or custom categories.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = { showCreate = true }) { Text("Set up") }
                             }
-                            Text("$allocationPercent%", fontWeight = FontWeight.Black, color = if (allocationPercent > 100) Error else Primary)
                         }
-                        Spacer(Modifier.height(7.dp))
-                        Text("${money(allocation.spentAmount)} of ${money(allocation.plannedAmount)}", color = Muted, style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(8.dp))
-                        ProgressBar(allocationPercent, if (allocationPercent > 100) Error else Primary)
+                    }
+                } else {
+                    items(plan.allocations, key = { it.id ?: it.label }) { allocation ->
+                        AllocationCard(allocation)
+                    }
+                }
+
+                item {
+                    TextButton(
+                        onClick = { showCreate = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text("Replace this plan")
                     }
                 }
             }
         }
-        item { Spacer(Modifier.height(8.dp)) }
     }
 
     if (showCreate) {
         CreatePlanDialog(
             onDismiss = { showCreate = false },
             onCreate = { income, allocations ->
-                vm.create(income, allocations) { result -> if (result.isSuccess) showCreate = false }
+                vm.create(income, allocations) { result ->
+                    if (result.isSuccess) showCreate = false
+                }
             },
         )
     }
 }
 
 @Composable
-private fun ForecastMetric(label: String, value: String, modifier: Modifier) {
-    Column(modifier) {
-        Text(label, color = Muted, style = MaterialTheme.typography.labelSmall)
-        Text(value, color = Ink, fontWeight = FontWeight.Bold)
+private fun AllocationCard(allocation: PlanAllocation) {
+    val percent = if (allocation.plannedAmount > 0) {
+        (allocation.spentAmount / allocation.plannedAmount * 100).toInt().coerceIn(0, 100)
+    } else 0
+    SyncedCard {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(allocation.label, fontWeight = FontWeight.Bold, color = Ink, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "${money(allocation.spentAmount)} of ${money(allocation.plannedAmount)}",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Surface(
+                color = if (percent >= 90) WarningSoft else PrimarySoft,
+                shape = RoundedCornerShape(100.dp),
+            ) {
+                Text(
+                    if (allocation.plannedAmount > 0) "$percent%" else "—",
+                    color = if (percent >= 90) Warning else PrimaryDeep,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(13.dp))
+        ProgressBar(percent, color = if (percent >= 90) Warning else Primary)
+        Spacer(Modifier.height(7.dp))
+        Text(
+            if (allocation.plannedAmount <= 0) "No target set" else "${money((allocation.plannedAmount - allocation.spentAmount).coerceAtLeast(0.0))} left",
+            color = Muted,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
@@ -200,36 +227,29 @@ private fun CreatePlanDialog(
     onCreate: (Double, List<PlanAllocation>) -> Unit,
 ) {
     var income by remember { mutableStateOf("") }
-    var housingBills by remember { mutableStateOf("") }
-    var food by remember { mutableStateOf("") }
-    var transport by remember { mutableStateOf("") }
+    var essentials by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Create monthly plan", fontWeight = FontWeight.Black)
-                Text("Start with the money you expect, then reserve the important parts.", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-        },
+        title = { Text("Create monthly plan") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MoneyField("Expected income", income) { income = it }
-                MoneyField("Housing & bills", housingBills) { housingBills = it }
-                MoneyField("Food", food) { food = it }
-                MoneyField("Transport", transport) { transport = it }
-                MoneyField("Savings / goals", saving) { saving = it }
+                OutlinedTextField(income, { income = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Expected income") })
+                OutlinedTextField(essentials, { essentials = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Essentials allocation") })
+                OutlinedTextField(saving, { saving = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Saving / goals") })
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     val allocations = buildList {
-                        housingBills.toDoubleOrNull()?.takeIf { it > 0 }?.let { add(PlanAllocation(label = "Housing & bills", category = "utilities", plannedAmount = it)) }
-                        food.toDoubleOrNull()?.takeIf { it > 0 }?.let { add(PlanAllocation(label = "Food", category = "food", plannedAmount = it)) }
-                        transport.toDoubleOrNull()?.takeIf { it > 0 }?.let { add(PlanAllocation(label = "Transport", category = "transport", plannedAmount = it)) }
-                        saving.toDoubleOrNull()?.takeIf { it > 0 }?.let { add(PlanAllocation(label = "Savings & goals", category = "savings", plannedAmount = it)) }
+                        essentials.toDoubleOrNull()?.takeIf { it > 0 }?.let {
+                            add(PlanAllocation(label = "Essentials", category = "general", plannedAmount = it))
+                        }
+                        saving.toDoubleOrNull()?.takeIf { it > 0 }?.let {
+                            add(PlanAllocation(label = "Goals", category = "savings", plannedAmount = it))
+                        }
                     }
                     income.toDoubleOrNull()?.let { onCreate(it, allocations) }
                 },
@@ -237,16 +257,5 @@ private fun CreatePlanDialog(
             ) { Text("Create plan") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun MoneyField(label: String, value: String, onValue: (String) -> Unit) {
-    OutlinedTextField(
-        value,
-        { onValue(it.filter { c -> c.isDigit() || c == '.' }) },
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
     )
 }
