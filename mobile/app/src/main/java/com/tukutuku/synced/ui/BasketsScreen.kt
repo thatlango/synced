@@ -4,13 +4,18 @@ import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -18,10 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tukutuku.synced.app.BasketsViewModel
 import com.tukutuku.synced.data.model.Basket
-import com.tukutuku.synced.ui.components.EmptyState
-import com.tukutuku.synced.ui.components.ProgressBar
-import com.tukutuku.synced.ui.components.SyncedCard
-import com.tukutuku.synced.ui.components.money
+import com.tukutuku.synced.ui.components.*
 import com.tukutuku.synced.ui.theme.*
 
 @Composable
@@ -33,69 +35,89 @@ fun BasketsScreen(
     val invite by vm.invite.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
     var contributionTarget by remember { mutableStateOf<Basket?>(null) }
+    val baskets = state.data.orEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Baskets", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-                    Text("Purpose pools for school fees, emergencies, travel and shared goals.", color = Muted)
+                    Text("Baskets", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = Ink)
+                    Text("Save for a purpose, alone or together.", color = Muted, style = MaterialTheme.typography.bodyLarge)
                 }
-                IconButton(onClick = { showCreate = true }) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Create Basket", tint = Primary)
+                Surface(shape = RoundedCornerShape(16.dp), color = Surface, shadowElevation = 1.dp) {
+                    IconButton(onClick = { showCreate = true }) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Create Basket", tint = Primary)
+                    }
                 }
             }
         }
+
+        if (baskets.isNotEmpty()) {
+            item {
+                val totalSaved = baskets.sumOf { it.savedAmount }
+                val totalTarget = baskets.sumOf { it.targetAmount }
+                val overallPercent = if (totalTarget > 0) (totalSaved / totalTarget * 100).toInt().coerceIn(0, 100) else 0
+                GradientCard(Modifier.fillMaxWidth()) {
+                    Text("SAVED ACROSS BASKETS", color = Color.White.copy(alpha = .68f), style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(7.dp))
+                    Text(money(totalSaved), color = Color.White, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
+                    Text("${baskets.size} active basket${if (baskets.size == 1) "" else "s"}", color = Color.White.copy(alpha = .72f))
+                    if (totalTarget > 0) {
+                        Spacer(Modifier.height(18.dp))
+                        ProgressBar(overallPercent, color = Color.White, trackColor = Color.White.copy(alpha = .18f))
+                        Spacer(Modifier.height(7.dp))
+                        Text("$overallPercent% of ${money(totalTarget)} combined targets", color = Color.White.copy(alpha = .76f), style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
         item {
-            OutlinedButton(onClick = onJoin, modifier = Modifier.fillMaxWidth()) {
-                Text("Join with invite code or QR link")
+            Surface(
+                onClick = onJoin,
+                shape = RoundedCornerShape(20.dp),
+                color = PrimarySoft,
+            ) {
+                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = CircleShape, color = Color.White.copy(alpha = .9f)) {
+                        Icon(Icons.Outlined.Groups, contentDescription = null, tint = Primary, modifier = Modifier.padding(9.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Join a Basket", fontWeight = FontWeight.Bold, color = Ink)
+                        Text("Use an invite code or QR link", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Icon(Icons.Outlined.PersonAdd, contentDescription = null, tint = Primary)
+                }
             }
         }
 
         when {
-            state.loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.data.isNullOrEmpty() -> item {
+            state.loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = Primary) }
+            baskets.isEmpty() -> item {
                 EmptyState(
                     title = "No Baskets yet",
-                    body = "Create a purpose pool alone or with people you trust.",
+                    body = "Create a purpose pool for school fees, emergencies, travel or any goal.",
                     action = "Create Basket",
                     onAction = { showCreate = true },
                 )
             }
-            else -> items(state.data.orEmpty(), key = { it.id }) { basket ->
-                SyncedCard {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(Modifier.weight(1f)) {
-                            Text(basket.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text(money(basket.savedAmount), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                            Text(
-                                if (basket.targetAmount > 0) "${money(basket.targetAmount)} target" else "Open-ended Basket",
-                                color = Muted,
-                            )
-                        }
-                        IconButton(onClick = { vm.invite(basket.id) }) {
-                            Icon(Icons.Outlined.PersonAdd, contentDescription = "Invite", tint = Primary)
-                        }
-                    }
-                    basket.progressPercent?.let { progress ->
-                        Spacer(Modifier.height(10.dp))
-                        ProgressBar(progress, Secondary)
-                        Text(
-                            "$progress% funded • ${basket.members.size} member${if (basket.members.size == 1) "" else "s"}",
-                            color = Muted,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 6.dp),
-                        )
-                    }
-                    TextButton(onClick = { contributionTarget = basket }) { Text("Add contribution") }
+            else -> {
+                item { SectionTitle("Your Baskets") }
+                items(baskets, key = { it.id }) { basket ->
+                    BasketCard(
+                        basket = basket,
+                        onInvite = { vm.invite(basket.id) },
+                        onContribute = { contributionTarget = basket },
+                    )
                 }
             }
         }
@@ -128,6 +150,48 @@ fun BasketsScreen(
             shareUrl = it.joinUrl ?: it.qrPayload ?: fallback,
             onDismiss = vm::clearInvite,
         )
+    }
+}
+
+@Composable
+private fun BasketCard(
+    basket: Basket,
+    onInvite: () -> Unit,
+    onContribute: () -> Unit,
+) {
+    SyncedCard {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(basket.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = Ink)
+                Spacer(Modifier.height(5.dp))
+                Text(money(basket.savedAmount), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Ink)
+                Text(
+                    if (basket.targetAmount > 0) "of ${money(basket.targetAmount)} target" else "Open-ended Basket",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Surface(shape = RoundedCornerShape(15.dp), color = PrimarySoft) {
+                IconButton(onClick = onInvite) {
+                    Icon(Icons.Outlined.PersonAdd, contentDescription = "Invite", tint = Primary)
+                }
+            }
+        }
+        basket.progressPercent?.let { progress ->
+            Spacer(Modifier.height(14.dp))
+            ProgressBar(progress, Secondary)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("$progress% funded", color = Muted, style = MaterialTheme.typography.labelSmall)
+                Text("${basket.members.size} member${if (basket.members.size == 1) "" else "s"}", color = Muted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Button(onClick = onContribute, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Savings, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("Add contribution")
+        }
     }
 }
 
