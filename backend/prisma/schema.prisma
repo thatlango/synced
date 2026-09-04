@@ -159,6 +159,36 @@ enum PlanStatus {
   closed
 }
 
+enum FinancialRuleStatus {
+  active
+  paused
+}
+
+enum FinancialRuleAction {
+  categorize
+  exclude_from_analytics
+  allocate_to_basket
+}
+
+enum DebtStatus {
+  active
+  paid_off
+  closed
+}
+
+enum SharedRequestStatus {
+  pending
+  approved
+  declined
+  cancelled
+}
+
+enum SettlementStatus {
+  pending
+  completed
+  cancelled
+}
+
 // ─────────────────────────────────────────────────────────────
 // USERS
 // ─────────────────────────────────────────────────────────────
@@ -630,4 +660,136 @@ model ReconciliationLog {
   createdAt     DateTime @default(now())
 
   @@map("reconciliation_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCIAL INTELLIGENCE / CROSS-PLATFORM STATE
+// ─────────────────────────────────────────────────────────────
+
+model FinancialRule {
+  id                String              @id @default(uuid())
+  userId            String
+  name              String
+  matchMerchant     String?
+  matchDescription  String?
+  matchSource       TransactionSource?
+  minAmount         Decimal?            @db.Decimal(18, 2)
+  maxAmount         Decimal?            @db.Decimal(18, 2)
+  action            FinancialRuleAction
+  category          Category?
+  basketId          String?
+  allocationPercent Int?
+  priority          Int                 @default(100)
+  status            FinancialRuleStatus @default(active)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId, status, priority])
+  @@map("financial_rules")
+}
+
+model MerchantPreference {
+  id                    String   @id @default(uuid())
+  userId                String
+  merchantKey           String
+  displayName           String?
+  category              Category
+  excludedFromAnalytics Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([userId, merchantKey])
+  @@index([userId, category])
+  @@map("merchant_preferences")
+}
+
+model DebtAccount {
+  id                 String     @id @default(uuid())
+  userId             String
+  name               String
+  lender             String?
+  currency           String     @default("UGX")
+  principal          Decimal?   @db.Decimal(18, 2)
+  outstandingBalance Decimal    @default(0) @db.Decimal(18, 2)
+  dueAmount          Decimal?   @db.Decimal(18, 2)
+  nextDueDate        DateTime?
+  interestRate       Decimal?   @db.Decimal(7, 4)
+  status             DebtStatus @default(active)
+  metadata           Json?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  payments DebtPayment[]
+
+  @@index([userId, status, nextDueDate])
+  @@map("debt_accounts")
+}
+
+model DebtPayment {
+  id              String   @id @default(uuid())
+  debtId          String
+  userId          String
+  amount          Decimal  @db.Decimal(18, 2)
+  principalAmount Decimal? @db.Decimal(18, 2)
+  interestAmount  Decimal? @db.Decimal(18, 2)
+  feeAmount       Decimal? @db.Decimal(18, 2)
+  penaltyAmount   Decimal? @db.Decimal(18, 2)
+  transactionId   String?
+  paidAt          DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  debt DebtAccount @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([userId, paidAt])
+  @@map("debt_payments")
+}
+
+model DeviceRegistration {
+  id         String   @id @default(uuid())
+  userId     String
+  platform   Platform
+  token      String   @unique
+  enabled    Boolean  @default(true)
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, enabled])
+  @@map("device_registrations")
+}
+
+model SharedExpenseRequest {
+  id            String              @id @default(uuid())
+  householdId   String
+  requestedBy   String
+  amount        Decimal             @db.Decimal(18, 2)
+  currency      String              @default("UGX")
+  description   String
+  category      Category?
+  status        SharedRequestStatus @default(pending)
+  decidedBy     String?
+  decidedAt     DateTime?
+  transactionId String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([householdId, status, createdAt])
+  @@map("shared_expense_requests")
+}
+
+model HouseholdSettlement {
+  id          String           @id @default(uuid())
+  householdId String
+  fromUserId  String
+  toUserId    String
+  amount      Decimal          @db.Decimal(18, 2)
+  currency    String           @default("UGX")
+  status      SettlementStatus @default(pending)
+  note        String?
+  settledAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([householdId, status, createdAt])
+  @@map("household_settlements")
 }
