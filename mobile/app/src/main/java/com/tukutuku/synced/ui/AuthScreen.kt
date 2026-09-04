@@ -163,6 +163,13 @@ fun AuthScreen(viewModel: AuthViewModel = hiltViewModel()) {
                     )
                 }
             }
+
+            Text(
+                "A product of © Tuku-Tuku Innovation Labs",
+                color = Muted,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 18.dp),
+            )
         }
     }
 }
