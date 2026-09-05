@@ -6,22 +6,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Savings
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -42,17 +35,13 @@ import com.tukutuku.synced.domain.AuthState
 import com.tukutuku.synced.ui.AskSyncedScreen
 import com.tukutuku.synced.ui.AuthScreen
 import com.tukutuku.synced.ui.BasketsScreen
-import com.tukutuku.synced.ui.BillsScreen
 import com.tukutuku.synced.ui.HomeScreen
 import com.tukutuku.synced.ui.HouseholdScreen
-import com.tukutuku.synced.ui.IntelligenceScreen
 import com.tukutuku.synced.ui.JoinInviteScreen
 import com.tukutuku.synced.ui.PlanScreen
 import com.tukutuku.synced.ui.SmsSyncScreen
 import com.tukutuku.synced.ui.TransactionsScreen
-import com.tukutuku.synced.ui.theme.Ink
-import com.tukutuku.synced.ui.theme.PrimarySoft
-import com.tukutuku.synced.ui.theme.SyncedTheme
+import com.tukutuku.synced.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
 
 private data class Tab(
@@ -63,7 +52,7 @@ private data class Tab(
 
 private val tabs = listOf(
     Tab("home", "Home", Icons.Outlined.Home),
-    Tab("transactions", "Transactions", Icons.AutoMirrored.Outlined.ReceiptLong),
+    Tab("transactions", "Activity", Icons.AutoMirrored.Outlined.ReceiptLong),
     Tab("plan", "Plan", Icons.Outlined.CalendarMonth),
     Tab("baskets", "Baskets", Icons.Outlined.Savings),
     Tab("household", "Shared", Icons.Outlined.Groups),
@@ -114,9 +103,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Splash() {
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = Canvas) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(color = Primary)
         }
     }
 }
@@ -138,26 +127,36 @@ private fun SyncedRoot(
     }
 
     Scaffold(
+        containerColor = Canvas,
         bottomBar = {
             if (route in tabs.map { it.route }) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = route == tab.route,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = null,
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Ink,
-                                indicatorColor = PrimarySoft,
-                            ),
-                        )
+                Surface(color = Surface, shadowElevation = 12.dp) {
+                    NavigationBar(
+                        containerColor = Surface,
+                        tonalElevation = 0.dp,
+                        modifier = Modifier.height(72.dp),
+                    ) {
+                        tabs.forEach { tab ->
+                            NavigationBarItem(
+                                selected = route == tab.route,
+                                onClick = {
+                                    nav.navigate(tab.route) {
+                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = { Icon(tab.icon, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                                label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Primary,
+                                    selectedTextColor = Ink,
+                                    indicatorColor = PrimarySoft,
+                                    unselectedIconColor = Muted,
+                                    unselectedTextColor = Muted,
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -175,20 +174,14 @@ private fun SyncedRoot(
                     onHousehold = { nav.navigate("household") },
                     onTransactions = { nav.navigate("transactions") },
                     onAsk = { nav.navigate("ask") },
-                    onBills = { nav.navigate("bills") },
-                    onInsights = { nav.navigate("intelligence") },
                 )
             }
             composable("transactions") { TransactionsScreen() }
             composable("plan") { PlanScreen() }
             composable("baskets") { BasketsScreen(onJoin = { nav.navigate("join?code=") }) }
-            composable("household") {
-                HouseholdScreen(onJoin = { nav.navigate("join?code=") })
-            }
+            composable("household") { HouseholdScreen() }
             composable("sms") { SmsSyncScreen(onBack = { nav.popBackStack() }) }
             composable("ask") { AskSyncedScreen(onBack = { nav.popBackStack() }) }
-            composable("bills") { BillsScreen(onBack = { nav.popBackStack() }) }
-            composable("intelligence") { IntelligenceScreen(onBack = { nav.popBackStack() }) }
             composable(
                 route = "join?code={code}",
                 arguments = listOf(
@@ -200,11 +193,9 @@ private fun SyncedRoot(
             ) { backStackEntry ->
                 JoinInviteScreen(
                     initialCode = backStackEntry.arguments?.getString("code"),
-                    onDone = { result ->
-                        val destination = if (result.targetType == "basket") "baskets" else "household"
-                        nav.navigate(destination) {
-                            popUpTo("home")
-                            launchSingleTop = true
+                    onDone = {
+                        nav.navigate("home") {
+                            popUpTo("home") { inclusive = true }
                         }
                     },
                     onBack = { nav.popBackStack() },

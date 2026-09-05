@@ -1,14 +1,22 @@
 package com.tukutuku.synced.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -16,63 +24,91 @@ import com.tukutuku.synced.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
 
-fun money(v: Double, currency: String = "UGX"): String {
-    val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
-        minimumFractionDigits = 0
-        maximumFractionDigits = if (currency.equals("UGX", ignoreCase = true)) 0 else 2
-    }
-    return "$currency ${formatter.format(v)}"
-}
-
-fun categoryLabel(value: String?): String = when (value) {
-    "school_fees" -> "School fees"
-    "mobile_data" -> "Airtime & data"
-    "bill_payment" -> "Bill payments"
-    "healthcare" -> "Health"
-    null, "" -> "Other"
-    else -> value.replace('_', ' ').replaceFirstChar { it.uppercase() }
-}
+fun money(v: Double, currency: String = "UGX"): String =
+    "$currency ${NumberFormat.getNumberInstance(Locale.US).format(v)}"
 
 @Composable
 fun SyncedCard(
     modifier: Modifier = Modifier,
     containerColor: Color = Surface,
+    contentPadding: PaddingValues = PaddingValues(18.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier = modifier,
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = CardDefaults.outlinedCardBorder(enabled = true),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        Column(Modifier.padding(18.dp), content = content)
+        Column(Modifier.padding(contentPadding), content = content)
     }
 }
 
 @Composable
-fun SectionTitle(title: String, action: String? = null, onAction: (() -> Unit)? = null) {
+fun GradientCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(28.dp)
+    Box(
+        modifier = modifier
+            .shadow(12.dp, shape, ambientColor = Primary.copy(alpha = .15f), spotColor = Primary.copy(alpha = .18f))
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(PrimaryDeep, Primary, PrimaryBright),
+                ),
+            ),
+    ) {
+        Column(Modifier.padding(22.dp), content = content)
+    }
+}
+
+@Composable
+fun SectionTitle(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
-        if (action != null && onAction != null) TextButton(onClick = onAction) { Text(action) }
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = Ink,
+        )
+        if (action != null && onAction != null) {
+            TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                Text(action, color = Primary)
+            }
+        }
     }
 }
 
 @Composable
-fun ProgressBar(value: Int, color: Color = Primary) {
-    val f = value.coerceIn(0, 100) / 100f
+fun ProgressBar(
+    value: Int,
+    color: Color = Primary,
+    trackColor: Color = SurfaceSoft,
+) {
+    val fraction = value.coerceIn(0, 100) / 100f
     Box(
         Modifier
             .fillMaxWidth()
             .height(8.dp)
             .clip(RoundedCornerShape(100.dp))
-            .background(Border),
+            .background(trackColor),
     ) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(f).background(color))
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction)
+                .background(color),
+        )
     }
 }
 
@@ -83,16 +119,21 @@ fun EmptyState(
     action: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
-    SyncedCard(containerColor = SurfaceAlt) {
+    SyncedCard(containerColor = Surface) {
         Column(
-            Modifier.fillMaxWidth().padding(vertical = 14.dp),
+            Modifier.fillMaxWidth().padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Surface(shape = RoundedCornerShape(100.dp), color = PrimarySoft) {
-                Text("✦", color = Primary, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+            Surface(shape = CircleShape, color = PrimarySoft) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.padding(12.dp),
+                )
             }
             Spacer(Modifier.height(14.dp))
-            Text(title, fontWeight = FontWeight.Bold, color = Ink, textAlign = TextAlign.Center)
+            Text(title, fontWeight = FontWeight.Bold, color = Ink, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(
                 body,
@@ -101,7 +142,7 @@ fun EmptyState(
                 textAlign = TextAlign.Center,
             )
             if (action != null && onAction != null) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
                 Button(onClick = onAction) { Text(action) }
             }
         }
@@ -109,69 +150,91 @@ fun EmptyState(
 }
 
 @Composable
-fun InsightCard(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = PrimarySoft),
+fun InsightCard(text: String) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = PrimarySoft,
     ) {
-        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.Top) {
-            Surface(shape = RoundedCornerShape(100.dp), color = Surface) {
-                Text("✦", color = Primary, fontWeight = FontWeight.Black, modifier = Modifier.padding(9.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(17.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(shape = CircleShape, color = Color.White.copy(alpha = .9f)) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.padding(9.dp).size(18.dp),
+                )
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Synced recommendation", fontWeight = FontWeight.Bold, color = Ink)
+            Column {
+                Text("Synced insight", fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.height(3.dp))
                 Text(text, color = Muted, style = MaterialTheme.typography.bodyMedium)
-                if (action != null && onAction != null) {
-                    TextButton(onClick = onAction, contentPadding = PaddingValues(0.dp)) { Text(action) }
+            }
+        }
+    }
+}
+
+@Composable
+fun RingChart(
+    segments: List<Pair<Int, Color>>,
+    centerTop: String,
+    centerBottom: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val strokeWidth = 14.dp.toPx()
+            if (segments.isEmpty() || segments.sumOf { it.first }.coerceAtLeast(0) == 0) {
+                drawArc(
+                    color = Border,
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+            } else {
+                val total = segments.sumOf { it.first }.toFloat().coerceAtLeast(1f)
+                var start = -90f
+                segments.forEach { (value, color) ->
+                    val sweep = value.coerceAtLeast(0) / total * 360f
+                    if (sweep > 1f) {
+                        drawArc(
+                            color = color,
+                            startAngle = start,
+                            sweepAngle = (sweep - 4f).coerceAtLeast(1f),
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        )
+                    }
+                    start += sweep
                 }
             }
         }
-    }
-}
-
-@Composable
-fun MetricCard(
-    label: String,
-    value: String,
-    supporting: String? = null,
-    modifier: Modifier = Modifier,
-) {
-    SyncedCard(modifier = modifier) {
-        Text(label, color = Muted, style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(6.dp))
-        Text(value, color = Ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        supporting?.let {
-            Spacer(Modifier.height(4.dp))
-            Text(it, color = Muted, style = MaterialTheme.typography.bodySmall)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(centerTop, fontWeight = FontWeight.Black, color = Ink, style = MaterialTheme.typography.titleLarge)
+            Text(centerBottom, color = Muted, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
 @Composable
-fun StatusPill(text: String, tone: String = "neutral") {
-    val bg = when (tone) {
-        "success" -> SuccessSoft
-        "warning" -> WarningSoft
-        "error" -> ErrorSoft
-        "primary" -> PrimarySoft
-        else -> SurfaceAlt
-    }
-    val fg = when (tone) {
-        "success" -> Success
-        "warning" -> Warning
-        "error" -> Error
-        "primary" -> Primary
-        else -> Muted
-    }
-    Surface(shape = RoundedCornerShape(100.dp), color = bg) {
-        Text(
-            text,
-            color = fg,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        )
+fun MetricPill(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.White.copy(alpha = .13f),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
+            Text(label, color = Color.White.copy(alpha = .68f), style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(2.dp))
+            Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
