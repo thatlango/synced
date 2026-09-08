@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -20,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -130,32 +132,45 @@ private fun SyncedRoot(
         containerColor = Canvas,
         bottomBar = {
             if (route in tabs.map { it.route }) {
-                Surface(color = Surface, shadowElevation = 12.dp) {
-                    NavigationBar(
-                        containerColor = Surface,
-                        tonalElevation = 0.dp,
-                        modifier = Modifier.height(72.dp),
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = Surface,
+                        tonalElevation = 2.dp,
+                        shadowElevation = 12.dp,
                     ) {
-                        tabs.forEach { tab ->
-                            NavigationBarItem(
-                                selected = route == tab.route,
-                                onClick = {
-                                    nav.navigate(tab.route) {
-                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = { Icon(tab.icon, contentDescription = null, modifier = Modifier.size(22.dp)) },
-                                label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Primary,
-                                    selectedTextColor = Ink,
-                                    indicatorColor = PrimarySoft,
-                                    unselectedIconColor = Muted,
-                                    unselectedTextColor = Muted,
-                                ),
-                            )
+                        NavigationBar(
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp,
+                            modifier = Modifier.height(72.dp),
+                        ) {
+                            tabs.forEach { tab ->
+                                NavigationBarItem(
+                                    selected = route == tab.route,
+                                    onClick = {
+                                        nav.navigate(tab.route) {
+                                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                    icon = { Icon(tab.icon, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                                    label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Primary,
+                                        selectedTextColor = Ink,
+                                        indicatorColor = PrimarySoft,
+                                        unselectedIconColor = Muted,
+                                        unselectedTextColor = Muted,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
